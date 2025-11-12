@@ -1,4 +1,7 @@
-"""Kafka producer module"""
-from .producer import VitalSignsProducer, StreamingProducer
+"""
+Kafka Producer Module
+"""
 
-__all__ = ['VitalSignsProducer', 'StreamingProducer']
+from .producer import VitalSignsProducer
+
+__all__ = ['VitalSignsProducer']

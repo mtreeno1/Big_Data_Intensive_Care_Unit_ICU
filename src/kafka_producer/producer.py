@@ -1,13 +1,13 @@
 """
-Kafka Producer for Patient Vital Signs
-Streams real-time patient data to Kafka topics
+Kafka Producer for ICU Patient Vital Signs
+Sends patient data to Kafka topic
 """
 
 import json
-import time
 import logging
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 
@@ -77,7 +77,7 @@ class VitalSignsProducer:
             
             # Add producer metadata
             reading['producer_metadata'] = {
-                'sent_at': datetime.utcnow().isoformat(),
+                'sent_at': datetime.now(timezone.utc).isoformat(),
                 'topic': self.topic
             }
             
@@ -150,163 +150,26 @@ class VitalSignsProducer:
             logger.error(f"❌ Error closing producer: {e}")
 
 
-class StreamingProducer:
-    """
-    Continuous streaming producer
-    Manages patient simulators and continuously streams data
-    """
-    
-    def __init__(
-        self,
-        producer: VitalSignsProducer,
-        interval_seconds: float = 1.0
-    ):
-        """
-        Initialize streaming producer
-        
-        Args:
-            producer: VitalSignsProducer instance
-            interval_seconds: Time between readings (seconds)
-        """
-        self.producer = producer
-        self.interval = interval_seconds
-        self.is_running = False
-        self.stats = {
-            'total_sent': 0,
-            'total_failed': 0,
-            'start_time': None,
-            'batches_sent': 0
-        }
-    
-    def start_streaming(self, simulator, duration_seconds: Optional[int] = None):
-        """
-        Start streaming data from simulator
-        
-        Args:
-            simulator: MultiPatientSimulator instance
-            duration_seconds: How long to stream (None = infinite)
-        """
-        self.is_running = True
-        self.stats['start_time'] = datetime.utcnow()
-        
-        logger.info("🚀 Starting streaming producer...")
-        logger.info(f"⏱️  Interval: {self.interval} seconds")
-        logger.info(f"👥 Patients: {simulator.num_patients}")
-        
-        if duration_seconds:
-            logger.info(f"⏳ Duration: {duration_seconds} seconds")
-        else:
-            logger.info("⏳ Duration: Infinite (press Ctrl+C to stop)")
-        
-        start_time = time.time()
-        
-        try:
-            while self.is_running:
-                # Check duration
-                if duration_seconds and (time.time() - start_time) >= duration_seconds:
-                    logger.info(f"⏰ Duration limit reached ({duration_seconds}s)")
-                    break
-                
-                # Generate batch
-                batch = simulator.generate_batch()
-                
-                # Send to Kafka
-                batch_stats = self.producer.send_batch(batch)
-                
-                # Update statistics
-                self.stats['total_sent'] += batch_stats['successful']
-                self.stats['total_failed'] += batch_stats['failed']
-                self.stats['batches_sent'] += 1
-                
-                # Log progress every 10 batches
-                if self.stats['batches_sent'] % 10 == 0:
-                    elapsed = (datetime.utcnow() - self.stats['start_time']).total_seconds()
-                    rate = self.stats['total_sent'] / elapsed if elapsed > 0 else 0
-                    logger.info(
-                        f"📈 Progress: {self.stats['batches_sent']} batches, "
-                        f"{self.stats['total_sent']} readings, "
-                        f"{rate:.1f} readings/sec"
-                    )
-                
-                # Wait for next interval
-                time.sleep(self.interval)
-        
-        except KeyboardInterrupt:
-            logger.info("\n⚠️  Streaming interrupted by user")
-        
-        except Exception as e:
-            logger.error(f"❌ Error during streaming: {e}")
-            raise
-        
-        finally:
-            self.stop_streaming()
-    
-    def stop_streaming(self):
-        """Stop streaming and show final statistics"""
-        self.is_running = False
-        
-        if self.stats['start_time']:
-            elapsed = (datetime.utcnow() - self.stats['start_time']).total_seconds()
-            
-            logger.info("\n" + "=" * 60)
-            logger.info("📊 STREAMING STATISTICS")
-            logger.info("=" * 60)
-            logger.info(f"⏱️  Total time: {elapsed:.1f} seconds")
-            logger.info(f"📦 Batches sent: {self.stats['batches_sent']}")
-            logger.info(f"✅ Readings sent: {self.stats['total_sent']}")
-            logger.info(f"❌ Failed: {self.stats['total_failed']}")
-            
-            if elapsed > 0:
-                logger.info(f"📈 Average rate: {self.stats['total_sent'] / elapsed:.1f} readings/sec")
-            
-            logger.info("=" * 60)
-
-
-# Example usage
+# Test
 if __name__ == "__main__":
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+    # Test producer
+    producer = VitalSignsProducer()
     
-    from src.data_generation.patient_simulator import MultiPatientSimulator
+    # Test message
+    test_reading = {
+        'patient_id': 'PT-TEST-001',
+        'timestamp': datetime.utcnow().isoformat(),
+        'profile': 'HEALTHY',
+        'vital_signs': {
+            'heart_rate': 72,
+            'spo2': 98.5,
+            'temperature': 36.8
+        }
+    }
     
-    # Configuration
-    KAFKA_BROKER = 'localhost:9092'
-    TOPIC = 'patient-vital-signs'
-    NUM_PATIENTS = 10
-    INTERVAL = 1.0  # 1 second between readings
-    DURATION = 60  # Stream for 60 seconds
+    # Send test message
+    success = producer.send_reading(test_reading)
+    print(f"Test message sent: {'✅ Success' if success else '❌ Failed'}")
     
-    try:
-        # Initialize components
-        logger.info("Initializing system...")
-        
-        # Create patient simulator
-        simulator = MultiPatientSimulator(num_patients=NUM_PATIENTS)
-        logger.info(f"✅ Created simulator with {NUM_PATIENTS} patients")
-        
-        # Create Kafka producer
-        producer = VitalSignsProducer(
-            bootstrap_servers=KAFKA_BROKER,
-            topic=TOPIC
-        )
-        
-        # Create streaming producer
-        streamer = StreamingProducer(producer, interval_seconds=INTERVAL)
-        
-        # Start streaming
-        streamer.start_streaming(simulator, duration_seconds=DURATION)
-    
-    except KeyboardInterrupt:
-        logger.info("\n⚠️  Interrupted by user")
-    
-    except Exception as e:
-        logger.error(f"❌ Fatal error: {e}")
-        raise
-    
-    finally:
-        # Cleanup
-        if 'producer' in locals():
-            producer.close()
-        
-        logger.info("👋 Program terminated")
+    # Close
+    producer.close()
