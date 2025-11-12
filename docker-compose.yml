@@ -1,19 +1,6 @@
 version: "3.8"
 
 services:
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: icu-kafka-ui
-    ports:
-      - "8080:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: ICU-Cluster
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-    depends_on:
-      - kafka
-      - zookeeper
-
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     hostname: zookeeper
@@ -52,16 +39,21 @@ services:
       - kafka-data:/var/lib/kafka/data
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15
     container_name: icu-postgres
-    ports:
-      - "5432:5432"
     environment:
-      POSTGRES_DB: icu_monitoring
       POSTGRES_USER: icu_user
       POSTGRES_PASSWORD: icu_password
+      POSTGRES_DB: icu_db
+    ports:
+      - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U icu_user -d icu_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   influxdb:
     image: influxdb:2.7-alpine
@@ -76,11 +68,11 @@ services:
       DOCKER_INFLUXDB_INIT_BUCKET: vital_signs
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: my-super-secret-auth-token
     volumes:
-      - influxdb-data:/var/lib/influxdb2
+      - influxdb_data:/var/lib/influxdb2
 
 volumes:
   zookeeper-data:
   zookeeper-logs:
   kafka-data:
-  postgres-data:
-  influxdb-data:
+  postgres_data:
+  influxdb_data:
