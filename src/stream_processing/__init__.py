@@ -1,5 +1,5 @@
 """Stream processing module"""
 from .aggregator import WindowAggregator
-from .processor import VitalSignsProcessor
+from .processor import StreamProcessor  
 
-__all__ = ['WindowAggregator', 'VitalSignsProcessor']
+__all__ = ['WindowAggregator', 'StreamProcessor']  

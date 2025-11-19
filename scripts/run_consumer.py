@@ -16,7 +16,7 @@ from config.config import settings
 from src.kafka_consumer.consumer import VitalSignsConsumer
 from src.storage.influx_schema import InfluxDBWriter
 from src.storage.postgres_schema import PostgreSQLWriter
-from src.stream_processing.processor import VitalSignsProcessor
+from src.stream_processing.processor import StreamProcessor
 from src.monitoring.metrics import PerformanceMonitor
 
 # Setup logging
@@ -46,15 +46,10 @@ class ConsumerApplication:
             bucket=settings.INFLUX_BUCKET
         )
         
-        self.postgres_writer = PostgreSQLWriter(
-            connection_url=settings.get_postgres_url()
-        )
+        self.postgres_writer = PostgreSQLWriter(connection_url=settings.POSTGRES_DSN)
         
         # Initialize processor
-        self.processor = VitalSignsProcessor(
-            influx_writer=self.influx_writer,
-            postgres_writer=self.postgres_writer
-        )
+        self.processor = StreamProcessor()
         
         # Initialize monitor
         self.monitor = PerformanceMonitor()

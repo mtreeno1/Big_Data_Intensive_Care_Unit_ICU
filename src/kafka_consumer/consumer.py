@@ -1,8 +1,6 @@
 """
-Kafka Consumer for Patient Vital Signs
-Consumes streaming data and stores in databases
+Kafka Consumer for Patient Vital Signs with Risk Processing
 """
-
 import json
 import time
 import logging
@@ -11,49 +9,55 @@ from datetime import datetime
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 
+from config.config import settings
+from src.stream_processing.processor import StreamProcessor
+from src.kafka_producer.producer import VitalSignsProducer
+from src.storage.influx_schema import InfluxDBWriter
+
 logger = logging.getLogger(__name__)
 
-
 class VitalSignsConsumer:
-    """Kafka consumer for patient vital signs"""
+    """Kafka consumer for patient vital signs with risk processing"""
     
     def __init__(
         self,
-        bootstrap_servers: str = 'localhost:9092',
-        topic: str = 'patient-vital-signs',
-        group_id: str = 'icu-consumers',
-        auto_offset_reset: str = 'earliest'
+        bootstrap_servers: str = None,
+        topic: str = None,
+        group_id: str = None,
+        auto_offset_reset: str = 'earliest',
+        session_timeout_ms: int = 30000,
+        heartbeat_interval_ms: int = 10000
     ):
-        """
-        Initialize Kafka consumer
+        self.topic = topic or settings.KAFKA_TOPIC_VITAL_SIGNS
+        self.bootstrap_servers = bootstrap_servers or settings.KAFKA_BOOTSTRAP_SERVERS
+        self.group_id = group_id or settings.KAFKA_CONSUMER_GROUP
         
-        Args:
-            bootstrap_servers: Kafka broker address
-            topic: Kafka topic to consume from
-            group_id: Consumer group ID
-            auto_offset_reset: Where to start reading ('earliest' or 'latest')
-        """
-        self.topic = topic
-        self.bootstrap_servers = bootstrap_servers
-        self.group_id = group_id
+        # Initialize components
+        self.processor = StreamProcessor()
+        self.alert_producer = VitalSignsProducer(topic=settings.KAFKA_TOPIC_ALERTS)
+        self.influx_storage = InfluxDBWriter( 
+            url=settings.INFLUX_URL,
+            token=settings.INFLUX_TOKEN,
+            org=settings.INFLUX_ORG,
+            bucket=settings.INFLUX_BUCKET
+        )
         
         try:
             self.consumer = KafkaConsumer(
-                topic,
-                bootstrap_servers=bootstrap_servers,
-                group_id=group_id,
+                self.topic,
+                bootstrap_servers=self.bootstrap_servers,
+                group_id=self.group_id,
                 auto_offset_reset=auto_offset_reset,
                 enable_auto_commit=True,
                 auto_commit_interval_ms=5000,
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 key_deserializer=lambda k: k.decode('utf-8') if k else None,
                 max_poll_records=100,
-                session_timeout_ms=30000,
-                heartbeat_interval_ms=10000
+                session_timeout_ms=session_timeout_ms,
+                heartbeat_interval_ms=heartbeat_interval_ms
             )
-            logger.info(f"✅ Kafka Consumer initialized: {bootstrap_servers}")
-            logger.info(f"📡 Subscribed to topic: {topic}")
-            logger.info(f"👥 Consumer group: {group_id}")
+            logger.info(f"✅ Kafka Consumer initialized: {self.bootstrap_servers}")
+            logger.info(f"📡 Subscribed to topic: {self.topic}")
         
         except KafkaError as e:
             logger.error(f"❌ Failed to initialize Kafka Consumer: {e}")
@@ -61,63 +65,47 @@ class VitalSignsConsumer:
     
     def consume_messages(
         self,
-        process_callback: Callable[[Dict], bool],
+        process_callback: Optional[Callable[[Dict], bool]] = None,
         max_messages: Optional[int] = None,
         timeout_ms: int = 1000
     ):
-        """
-        Consume messages from Kafka and process them
-        
-        Args:
-            process_callback: Function to process each message
-            max_messages: Maximum number of messages to consume (None = infinite)
-            timeout_ms: Timeout for polling
-        """
+        """Consume and process messages with full risk assessment pipeline"""
         messages_processed = 0
         messages_failed = 0
         start_time = time.time()
         
-        logger.info("🚀 Starting consumer...")
-        logger.info(f"⏳ Max messages: {max_messages if max_messages else 'Infinite'}")
+        logger.info("🚀 Starting consumer with risk processing...")
         
         try:
             for message in self.consumer:
                 try:
-                    # Extract message data
                     reading = message.value
-                    partition = message.partition
-                    offset = message.offset
                     
-                    logger.debug(
-                        f"📨 Received: Patient {reading['patient_id']} "
-                        f"(partition: {partition}, offset: {offset})"
-                    )
+                    # 🔄 Process with risk scoring
+                    enriched_reading = self.processor.process_reading(reading)
                     
-                    # Process message
-                    processing_start = time.time()
-                    success = process_callback(reading)
-                    processing_time = (time.time() - processing_start) * 1000
+                    # 📊 Store in InfluxDB
+                    self.influx_storage.write_vital_signs(enriched_reading)
                     
-                    if success:
-                        messages_processed += 1
-                        logger.debug(f"✅ Processed in {processing_time:.2f}ms")
+                    # 🚨 Send alerts for high-risk
+                    if enriched_reading["risk_assessment"]["risk_level"] in ["HIGH", "CRITICAL"]:
+                        self._send_alert(enriched_reading)
+                    
+                    # 🎯 Custom processing callback
+                    if process_callback:
+                        success = process_callback(enriched_reading)
+                        if success:
+                            messages_processed += 1
+                        else:
+                            messages_failed += 1
                     else:
-                        messages_failed += 1
-                        logger.warning(f"⚠️  Processing failed for {reading['patient_id']}")
+                        messages_processed += 1
                     
-                    # Log progress every 100 messages
+                    # Progress logging
                     if messages_processed % 100 == 0:
                         elapsed = time.time() - start_time
                         rate = messages_processed / elapsed if elapsed > 0 else 0
-                        logger.info(
-                            f"📈 Progress: {messages_processed} processed, "
-                            f"{messages_failed} failed, {rate:.1f} msg/sec"
-                        )
-                    
-                    # Check if we've reached max messages
-                    if max_messages and messages_processed >= max_messages:
-                        logger.info(f"✅ Reached max messages: {max_messages}")
-                        break
+                        logger.info(f"📈 Processed {messages_processed} messages ({rate:.1f} msg/sec)")
                 
                 except Exception as e:
                     messages_failed += 1
@@ -125,14 +113,28 @@ class VitalSignsConsumer:
                     continue
         
         except KeyboardInterrupt:
-            logger.info("\n⚠️  Consumer interrupted by user")
-        
-        except Exception as e:
-            logger.error(f"❌ Consumer error: {e}")
-            raise
+            logger.info("\n⚠️  Consumer interrupted")
         
         finally:
             self._log_summary(messages_processed, messages_failed, start_time)
+    
+    def _send_alert(self, reading: Dict):
+        """Send alert for high-risk patient"""
+        alert = {
+            "patient_id": reading["patient_id"],
+            "alert_type": "HIGH_RISK",
+            "risk_level": reading["risk_assessment"]["risk_level"],
+            "risk_score": reading["risk_assessment"]["risk_score"],
+            "critical_event": reading["risk_assessment"]["critical_event"],
+            "timestamp": reading["timestamp"],
+            "message": f"🚨 {reading['risk_assessment']['risk_level']} RISK: {reading['patient_id']}"
+        }
+        
+        try:
+            self.alert_producer.send_alert(alert)
+            logger.warning(f"🚨 Alert sent for {reading['patient_id']}")
+        except Exception as e:
+            logger.error(f"❌ Failed to send alert: {e}")
     
     def _log_summary(self, processed: int, failed: int, start_time: float):
         """Log consumption summary"""
@@ -153,9 +155,11 @@ class VitalSignsConsumer:
         logger.info("=" * 60)
     
     def close(self):
-        """Close the consumer"""
+        """Close all connections"""
         try:
             self.consumer.close()
-            logger.info("✅ Kafka Consumer closed")
+            self.alert_producer.close()
+            self.influx_storage.close()
+            logger.info("✅ Consumer and dependencies closed")
         except Exception as e:
             logger.error(f"❌ Error closing consumer: {e}")

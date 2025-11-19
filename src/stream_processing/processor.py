@@ -1,164 +1,79 @@
 """
-Stream Processor
-Main processing logic for incoming vital signs
+Stream processor: Analyze vital signs and update risk scores
 """
-
+from typing import Dict, List
 import logging
-from typing import Dict, Optional
 from datetime import datetime
-from .aggregator import WindowAggregator
+
+from src.database.session import SessionLocal
+from src.database.models import Admission
+from src.ml_models.risk_scorer import RiskScorer
+
 
 logger = logging.getLogger(__name__)
 
-
-class VitalSignsProcessor:
-    """Process incoming vital signs readings"""
+class StreamProcessor:
+    """Processes streaming vital signs and updates risk assessments"""
     
-    def __init__(self, influx_writer, postgres_writer):
-        """
-        Initialize processor
-        
-        Args:
-            influx_writer: InfluxDBWriter instance
-            postgres_writer: PostgreSQLWriter instance
-        """
-        self.influx_writer = influx_writer
-        self.postgres_writer = postgres_writer
-        
-        # Create aggregators for different time windows
-        self.aggregators = {
-            '1m': WindowAggregator(window_seconds=60),
-            '5m': WindowAggregator(window_seconds=300),
-            '1h': WindowAggregator(window_seconds=3600)
-        }
-        
-        # Track patient states
-        self.patient_states: Dict[str, Dict] = {}
-        
-        logger.info("✅ VitalSignsProcessor initialized")
+    def __init__(self):
+        self.risk_scorer = RiskScorer()
     
-    def process_reading(self, reading: Dict) -> bool:
+    def process_reading(self, reading: Dict) -> Dict:
         """
         Process a single vital signs reading
-        
-        Args:
-            reading: Patient reading from Kafka
-            
-        Returns:
-            True if successful, False otherwise
+        Update admission risk score if patient is admitted
         """
-        try:
-            patient_id = reading['patient_id']
-            timestamp_str = reading['timestamp']
-            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-            vitals = reading['vital_signs']
-            profile = reading.get('profile', 'UNKNOWN')
-            metadata = reading.get('metadata', {})
-            
-            # 1. Store raw data in InfluxDB
-            success_influx = self.influx_writer.write_vital_signs(reading)
-            
-            if not success_influx:
-                logger.warning(f"⚠️  Failed to write to InfluxDB: {patient_id}")
-            
-            # 2. Update patient record in PostgreSQL
-            success_postgres = self.postgres_writer.upsert_patient(
-                patient_id=patient_id,
-                profile=profile,
-                metadata=metadata
-            )
-            
-            if not success_postgres:
-                logger.warning(f"⚠️  Failed to update patient: {patient_id}")
-            
-            # 3. Add to aggregation windows
-            for window_name, aggregator in self.aggregators.items():
-                aggregator.add_reading(patient_id, timestamp, vitals)
-            
-            # 4. Check for anomalies
-            if metadata.get('has_anomaly', False):
-                self._handle_anomaly(reading, timestamp)
-            
-            # 5. Update patient state
-            self._update_patient_state(patient_id, reading)
-            
-            # 6. Every minute, compute and store aggregates
-            if self._should_compute_aggregates(patient_id):
-                self._compute_and_store_aggregates(patient_id, timestamp)
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error processing reading: {e}")
-            return False
-    
-    def _handle_anomaly(self, reading: Dict, timestamp: datetime):
-        """Handle detected anomaly"""
-        try:
-            patient_id = reading['patient_id']
-            anomaly_details = reading['metadata'].get('anomaly_details', {})
-            
-            # Create event in PostgreSQL
-            self.postgres_writer.insert_event(
-                patient_id=patient_id,
-                event_type='anomaly',
-                timestamp=timestamp,
-                severity='MEDIUM',
-                description='Anomaly detected in vital signs',
-                vital_signs=reading['vital_signs'],
-                metadata=anomaly_details
-            )
-            
-            logger.info(f"🚨 Anomaly detected: {patient_id}")
-            
-        except Exception as e:
-            logger.error(f"❌ Error handling anomaly: {e}")
-    
-    def _update_patient_state(self, patient_id: str, reading: Dict):
-        """Update internal patient state"""
-        self.patient_states[patient_id] = {
-            'last_reading_time': datetime.utcnow(),
-            'profile': reading.get('profile'),
-            'reading_count': self.patient_states.get(patient_id, {}).get('reading_count', 0) + 1
-        }
-    
-    def _should_compute_aggregates(self, patient_id: str) -> bool:
-        """Check if it's time to compute aggregates"""
-        state = self.patient_states.get(patient_id, {})
-        reading_count = state.get('reading_count', 0)
+        patient_id = reading["patient_id"]
+        vital_signs = reading["vital_signs"]
+        critical_event = reading.get("critical_event", "none")
         
-        # Compute aggregates every 60 readings (approximately 1 minute)
-        return reading_count > 0 and reading_count % 60 == 0
+        # Calculate risk
+        risk_assessment = self.risk_scorer.assess_patient_risk(
+            vital_signs, critical_event
+        )
+        
+        # Update database if patient has active admission
+        self._update_admission_risk(patient_id, risk_assessment)
+        
+        # Add risk data to reading
+        enriched_reading = reading.copy()
+        enriched_reading["risk_assessment"] = risk_assessment
+        
+        logger.info(f"📊 Risk assessment for {patient_id}: {risk_assessment['risk_level']} ({risk_assessment['risk_score']})")
+        
+        return enriched_reading
     
-    def _compute_and_store_aggregates(self, patient_id: str, timestamp: datetime):
-        """Compute and store aggregated statistics"""
+    def _update_admission_risk(self, patient_id: str, risk_assessment: Dict):
+        """Update admission record with latest risk score"""
         try:
-            for window_name, aggregator in self.aggregators.items():
-                aggregates = aggregator.get_aggregates(patient_id)
+            with SessionLocal() as db:
+                # Find active admission for patient
+                admission = db.query(Admission).filter(
+                    Admission.patient_id == patient_id,
+                    Admission.discharge_time.is_(None)  # Active admission
+                ).first()
                 
-                if aggregates:
-                    self.influx_writer.write_aggregated_data(
-                        patient_id=patient_id,
-                        window=window_name,
-                        aggregates=aggregates,
-                        timestamp=timestamp.isoformat()
-                    )
+                if admission:
+                    admission.current_risk_score = risk_assessment["risk_score"]
+                    admission.risk_level = risk_assessment["risk_level"]
+                    admission.updated_at = datetime.utcnow()
                     
-                    logger.debug(f"📊 Stored aggregates for {patient_id} ({window_name})")
-        
+                    db.commit()
+                    logger.info(f"✅ Updated risk for admission {admission.admission_id}")
+                else:
+                    logger.debug(f"No active admission found for {patient_id}")
+                    
         except Exception as e:
-            logger.error(f"❌ Error computing aggregates: {e}")
+            logger.error(f"❌ Failed to update risk for {patient_id}: {e}")
     
-    def get_statistics(self) -> Dict:
-        """Get processor statistics"""
-        return {
-            'active_patients': len(self.patient_states),
-            'total_readings': sum(
-                state.get('reading_count', 0) 
-                for state in self.patient_states.values()
-            ),
-            'aggregator_buffers': {
-                window: len(agg.get_active_patients())
-                for window, agg in self.aggregators.items()
-            }
-        }
+    def process_batch(self, readings: List[Dict]) -> List[Dict]:
+        """Process batch of readings"""
+        processed = []
+        for reading in readings:
+            try:
+                processed_reading = self.process_reading(reading)
+                processed.append(processed_reading)
+            except Exception as e:
+                logger.error(f"Failed to process reading for {reading.get('patient_id')}: {e}")
+        
+        return processed

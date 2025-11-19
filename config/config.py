@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from pathlib import Path 
 
 class Settings(BaseSettings):
     # Kafka
@@ -43,7 +44,7 @@ class Settings(BaseSettings):
     
     # Logging
     LOG_LEVEL: str = "INFO"
-    
+    LOG_DIR: Path = Path("logs")
     class Config:
         env_file = ".env"
         case_sensitive = True
