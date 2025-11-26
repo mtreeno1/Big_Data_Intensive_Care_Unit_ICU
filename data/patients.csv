@@ -1,6 +1,11 @@
-patient_id,full_name,dob,gender,device_id
-PT-0001,Nguyen Van A,1987-05-10,M,DEV-PT-0001
-
-PT-0003,Le Van C,1980-12-15,M,DEV-PT-0003
-PT-0004,Pham Thi D,1995-08-30,F,DEV-PT-0004
-PT-0005,Hoang Van E,1975-03-22,M,DEV-PT-0005
+patient_id,full_name,dob,gender,device_id,blood_type,allergies,chronic_conditions
+PT-0001,Nguyen Van A,1987-05-10,M,DEV-PT-0001,O+,Penicillin,Hypertension
+PT-0002,Tran Thi B,1992-07-20,F,DEV-PT-0002,A+,None,Diabetes Type 2
+PT-0003,Le Van C,1980-12-15,M,DEV-PT-0003,B+,Aspirin,COPD
+PT-0004,Pham Thi D,1995-08-30,F,DEV-PT-0004,AB+,None,None
+PT-0005,Hoang Van E,1975-03-22,M,DEV-PT-0005,O-,Latex,Heart Disease
+PT-0006,Vu Thi F,1988-11-05,F,DEV-PT-0006,A-,None,Asthma
+PT-0007,Dang Van G,1970-04-18,M,DEV-PT-0007,B-,Iodine,Kidney Disease
+PT-0008,Ngo Thi H,1985-09-25,F,DEV-PT-0008,O+,None,None
+PT-0009,Bui Van I,1978-06-12,M,DEV-PT-0009,A+,Sulfa,Diabetes Type 1
+PT-0010,Do Thi K,1990-02-28,F,DEV-PT-0010,B+,None,Epilepsy
