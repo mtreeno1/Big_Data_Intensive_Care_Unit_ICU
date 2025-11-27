@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        /* Alert Popup Modal */
+        .alert-modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .alert-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 15px;
+            width: 80%;
+            max-width: 600px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            animation: shake 0.5s, pulse 1s infinite;
+            overflow: hidden;
+        }
+
+        .alert-header {
+            padding: 20px;
+            color: white;
+            font-weight: bold;
+            font-size: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .alert-header.CRITICAL {
+            background: linear-gradient(135deg, #ff0000, #cc0000);
+        }
+
+        .alert-header.HIGH {
+            background: linear-gradient(135deg, #ff6600, #cc5200);
+        }
+
+        .alert-header.MODERATE {
+            background: linear-gradient(135deg, #ffaa00, #cc8800);
+        }
+
+        .alert-body {
+            padding: 25px;
+            font-size: 16px;
+            line-height: 1.8;
+        }
+
+        .patient-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 5px solid #007bff;
+        }
+
+        .vital-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .vital-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .vital-label {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+
+        .vital-value {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .warning-list {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+
+        .warning-item {
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .close-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .close-btn:hover {
+            background-color: #c82333;
+            transform: scale(1.05);
+        }
+
+        .ack-btn {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+
+        .ack-btn:hover {
+            background-color: #218838;
+            transform: scale(1.05);
+        }
+
+        /* Connection Status Indicator */
+        .ws-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        .ws-connected {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .ws-disconnected {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .ws-connecting {
+            background-color: #ffc107;
+            color: black;
+        }
+
+        /* Alert Counter Badge */
+        .alert-counter {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            z-index: 1000;
+            animation: pulse 1s infinite;
+        }
+    </style>
+</head>
+<body>
+    <!-- Alert Modal -->
+    <div id="alertModal" class="alert-modal">
+        <div class="alert-content">
+            <div id="alertHeader" class="alert-header">
+                <span id="alertTitle">🚨 CRITICAL ALERT</span>
+                <span id="alertTime"></span>
+            </div>
+            <div class="alert-body">
+                <div class="patient-info">
+                    <h3 style="margin-top: 0;">👤 <span id="patientName"></span></h3>
+                    <p style="margin: 5px 0;"><strong>ID:</strong> <span id="patientId"></span></p>
+                    <p style="margin: 5px 0;"><strong>Risk Score:</strong> <span id="riskScore"></span> | <strong>MEWS:</strong> <span id="mewsScore"></span></p>
+                </div>
+
+                <h4>📊 Current Vital Signs:</h4>
+                <div class="vital-grid" id="vitalGrid"></div>
+
+                <div id="warningsContainer"></div>
+
+                <button class="ack-btn" onclick="acknowledgeAlert()">✅ Acknowledge & Close</button>
+                <button class="close-btn" onclick="closeAlert()">❌ Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Status -->
+    <div id="wsStatus" class="ws-status ws-connecting">🔄 Connecting...</div>
+
+    <!-- Alert Counter -->
+    <div id="alertCounter" class="alert-counter" style="display: none;">0</div>
+
+    <!-- Audio Elements -->
+    <audio id="criticalAlarm" loop>
+        <source src="https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="warningBeep">
+        <source src="https://www.soundjay.com/button/sounds/beep-07.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="notification">
+        <source src="https://www.soundjay.com/button/sounds/beep-09.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        let ws = null;
+        let reconnectInterval = null;
+        let alertCount = 0;
+        let currentAlertId = null;
+        let audioPlaying = null;
+
+        // WebSocket Configuration
+        const WS_URL = 'ws://localhost:8001/ws/alerts';
+        const RECONNECT_DELAY = 3000; // 3 seconds
+
+        // Initialize WebSocket Connection
+        function connectWebSocket() {
+            updateStatus('connecting');
+            
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                console.log('✅ WebSocket connected');
+                updateStatus('connected');
+                clearInterval(reconnectInterval);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('📨 Received:', data);
+
+                if (data.type === 'alert') {
+                    handleAlert(data.data);
+                } else if (data.type === 'alert_history') {
+                    console.log(`📚 Received ${data.count} historical alerts`);
+                } else if (data.type === 'heartbeat') {
+                    console.log('💓 Heartbeat received');
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+                updateStatus('disconnected');
+            };
+
+            ws.onclose = () => {
+                console.log('❌ WebSocket disconnected');
+                updateStatus('disconnected');
+                
+                // Auto-reconnect
+                reconnectInterval = setInterval(() => {
+                    console.log('🔄 Attempting to reconnect...');
+                    connectWebSocket();
+                }, RECONNECT_DELAY);
+            };
+        }
+
+        // Handle Alert
+        function handleAlert(alert) {
+            console.log('🚨 Alert received:', alert);
+            
+            // Update counter
+            alertCount++;
+            document.getElementById('alertCounter').textContent = alertCount;
+            document.getElementById('alertCounter').style.display = 'flex';
+
+            // Play sound based on priority
+            playAlertSound(alert.priority);
+
+            // Show popup modal
+            showAlertModal(alert);
+
+            // Store current alert ID for acknowledgment
+            currentAlertId = alert.alert_id;
+        }
+
+        // Play Alert Sound
+        function playAlertSound(priority) {
+            // Stop any currently playing audio
+            if (audioPlaying) {
+                audioPlaying.pause();
+                audioPlaying.currentTime = 0;
+            }
+
+            let audio;
+            let repeatCount = 1;
+
+            if (priority === 1) { // CRITICAL
+                audio = document.getElementById('criticalAlarm');
+                audio.volume = 1.0;
+                audio.loop = true; // Keep playing until acknowledged
+            } else if (priority === 2) { // HIGH
+                audio = document.getElementById('warningBeep');
+                audio.volume = 0.8;
+                repeatCount = 2;
+            } else { // MODERATE
+                audio = document.getElementById('notification');
+                audio.volume = 0.6;
+                repeatCount = 1;
+            }
+
+            audioPlaying = audio;
+            
+            // Play audio
+            audio.play().catch(err => {
+                console.error('🔇 Audio play failed:', err);
+                // Browser might block autoplay, show notification instead
+                showBrowserNotification(alert);
+            });
+
+            // For non-looping sounds, stop after repeats
+            if (!audio.loop && repeatCount > 1) {
+                let playCount = 0;
+                audio.addEventListener('ended', function playAgain() {
+                    playCount++;
+                    if (playCount < repeatCount) {
+                        audio.currentTime = 0;
+                        audio.play();
+                    } else {
+                        audio.removeEventListener('ended', playAgain);
+                    }
+                });
+            }
+        }
+
+        // Show Alert Modal
+        function showAlertModal(alert) {
+            const modal = document.getElementById('alertModal');
+            const header = document.getElementById('alertHeader');
+            
+            // Set header color based on risk level
+            header.className = `alert-header ${alert.risk_level}`;
+            
+            // Populate data
+            document.getElementById('alertTitle').textContent = `🚨 ${alert.risk_level} ALERT`;
+            document.getElementById('alertTime').textContent = new Date(alert.timestamp).toLocaleTimeString();
+            document.getElementById('patientName').textContent = alert.patient_name;
+            document.getElementById('patientId').textContent = alert.patient_id;
+            document.getElementById('riskScore').textContent = alert.risk_score.toFixed(1);
+            document.getElementById('mewsScore').textContent = alert.mews_score;
+
+            // Render vital signs
+            const vitalGrid = document.getElementById('vitalGrid');
+            vitalGrid.innerHTML = '';
+            
+            const vitals = alert.vital_signs;
+            const vitalItems = [
+                { icon: '❤️', label: 'Heart Rate', value: vitals.heart_rate, unit: 'bpm' },
+                { icon: '🫁', label: 'SpO₂', value: vitals.spo2, unit: '%' },
+                { icon: '🌡️', label: 'Temperature', value: vitals.temperature, unit: '°C' },
+                { icon: '💨', label: 'Resp Rate', value: vitals.respiratory_rate, unit: '/min' }
+            ];
+
+            vitalItems.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'vital-card';
+                card.innerHTML = `
+                    <div class="vital-label">${item.icon} ${item.label}</div>
+                    <div class="vital-value">${item.value} <small>${item.unit}</small></div>
+                `;
+                vitalGrid.appendChild(card);
+            });
+
+            // Add blood pressure if available
+            if (vitals.blood_pressure_systolic) {
+                const bpCard = document.createElement('div');
+                bpCard.className = 'vital-card';
+                bpCard.style.gridColumn = 'span 2';
+                bpCard.innerHTML = `
+                    <div class="vital-label">🩸 Blood Pressure</div>
+                    <div class="vital-value">${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic} <small>mmHg</small></div>
+                `;
+                vitalGrid.appendChild(bpCard);
+            }
+
+            // Render warnings
+            const warningsContainer = document.getElementById('warningsContainer');
+            if (alert.warnings && alert.warnings.length > 0) {
+                warningsContainer.innerHTML = `
+                    <div class="warning-list">
+                        <h4 style="margin-top: 0;">⚠️ Clinical Warnings:</h4>
+                        ${alert.warnings.map(w => `<div class="warning-item">• ${w}</div>`).join('')}
+                    </div>
+                `;
+            } else {
+                warningsContainer.innerHTML = '';
+            }
+
+            // Show modal
+            modal.style.display = 'block';
+
+            // Request browser notification permission
+            if (Notification.permission !== 'granted') {
+                Notification.requestPermission();
+            }
+        }
+
+        // Close Alert Modal
+        function closeAlert() {
+            document.getElementById('alertModal').style.display = 'none';
+            stopAudio();
+        }
+
+        // Acknowledge Alert (send to server)
+        function acknowledgeAlert() {
+            if (ws && ws.readyState === WebSocket.OPEN && currentAlertId) {
+                ws.send(JSON.stringify({
+                    type: 'ack',
+                    alert_id: currentAlertId,
+                    acknowledged_at: new Date().toISOString()
+                }));
+                console.log('✅ Alert acknowledged:', currentAlertId);
+            }
+            closeAlert();
+        }
+
+        // Stop Audio
+        function stopAudio() {
+            if (audioPlaying) {
+                audioPlaying.pause();
+                audioPlaying.currentTime = 0;
+                audioPlaying.loop = false;
+                audioPlaying = null;
+            }
+        }
+
+        // Update Connection Status
+        function updateStatus(status) {
+            const statusEl = document.getElementById('wsStatus');
+            statusEl.className = 'ws-status';
+
+            if (status === 'connected') {
+                statusEl.classList.add('ws-connected');
+                statusEl.textContent = '✅ Connected';
+            } else if (status === 'disconnected') {
+                statusEl.classList.add('ws-disconnected');
+                statusEl.textContent = '❌ Disconnected';
+            } else {
+                statusEl.classList.add('ws-connecting');
+                statusEl.textContent = '🔄 Connecting...';
+            }
+        }
+
+        // Browser Notification (fallback)
+        function showBrowserNotification(alert) {
+            if (Notification.permission === 'granted') {
+                new Notification(`${alert.risk_level} Alert - ${alert.patient_name}`, {
+                    body: `Risk Score: ${alert.risk_score.toFixed(1)} | MEWS: ${alert.mews_score}`,
+                    icon: '🚨',
+                    requireInteraction: true // Stay until user interacts
+                });
+            }
+        }
+
+        // Initialize on load
+        connectWebSocket();
+
+        // Close modal when clicking outside
+        window.onclick = (event) => {
+            const modal = document.getElementById('alertModal');
+            if (event.target === modal) {
+                closeAlert();
+            }
+        };
+    </script>
+</body>
+</html>

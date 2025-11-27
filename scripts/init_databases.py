@@ -1,99 +1,116 @@
-#!/usr/bin/env python3
+# filepath: scripts/init_databases.py
 """
-Initialize Databases
-Creates tables and initial setup for PostgreSQL and InfluxDB
+Initialize all databases (PostgreSQL tables and InfluxDB buckets)
 """
-
 import sys
-import logging
 from pathlib import Path
-
-# Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.database.models import init_db, engine
 from config.config import settings
-from src.storage.postgres_schema import PostgreSQLWriter, Base
-from src.storage.influx_schema import InfluxDBWriter
-from sqlalchemy import create_engine
-
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from sqlalchemy import text
 
 
-def init_postgresql():
+def init_postgres():
     """Initialize PostgreSQL database"""
-    logger.info("🗄️  Initializing PostgreSQL...")
+    print("=" * 80)
+    print("🐘 INITIALIZING POSTGRESQL")
+    print("=" * 80)
     
     try:
-        # Create engine
-        engine = create_engine(settings.get_postgres_url())
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT version()"))
+            version = result.scalar()
+            print(f"\n✅ Connected to PostgreSQL")
+            print(f"   Version: {version[:50]}...")
         
-        # Create all tables
-        Base.metadata.create_all(engine)
+        # Create tables
+        print("\n📦 Creating tables...")
+        init_db()
         
-        logger.info("✅ PostgreSQL initialized successfully")
-        logger.info(f"   Created tables: {', '.join(Base.metadata.tables.keys())}")
+        # Verify tables
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+            """))
+            tables = [row[0] for row in result]
+            
+            print(f"\n✅ Tables created: {', '.join(tables)}")
         
         return True
         
     except Exception as e:
-        logger.error(f"❌ Failed to initialize PostgreSQL: {e}")
+        print(f"\n❌ PostgreSQL initialization failed: {e}")
         return False
 
 
 def init_influxdb():
-    """Initialize InfluxDB"""
-    logger.info("💾 Initializing InfluxDB...")
+    """Initialize InfluxDB bucket"""
+    print("\n" + "=" * 80)
+    print("📊 INITIALIZING INFLUXDB")
+    print("=" * 80)
     
     try:
-        writer = InfluxDBWriter(
+        from influxdb_client import InfluxDBClient
+        from influxdb_client.rest import ApiException
+        
+        client = InfluxDBClient(
             url=settings.INFLUX_URL,
             token=settings.INFLUX_TOKEN,
-            org=settings.INFLUX_ORG,
-            bucket=settings.INFLUX_BUCKET
+            org=settings.INFLUX_ORG
         )
         
-        writer.close()
+        # Check bucket
+        buckets_api = client.buckets_api()
+        bucket = buckets_api.find_bucket_by_name(settings.INFLUX_BUCKET)
         
-        logger.info("✅ InfluxDB initialized successfully")
+        if not bucket:
+            print(f"\n📦 Creating bucket: {settings.INFLUX_BUCKET}")
+            buckets_api.create_bucket(
+                bucket_name=settings.INFLUX_BUCKET,
+                org=settings.INFLUX_ORG
+            )
+            print(f"✅ Bucket created")
+        else:
+            print(f"\n✅ Bucket already exists: {settings.INFLUX_BUCKET}")
+        
+        client.close()
         return True
         
     except Exception as e:
-        logger.error(f"❌ Failed to initialize InfluxDB: {e}")
+        print(f"\n❌ InfluxDB initialization failed: {e}")
+        print(f"💡 Make sure InfluxDB is running: docker-compose up -d influxdb")
         return False
 
 
 def main():
-    """Main entry point"""
-    logger.info("=" * 60)
-    logger.info("🔧 DATABASE INITIALIZATION")
-    logger.info("=" * 60)
+    """Initialize all databases"""
+    print("\n" + "=" * 80)
+    print("🔧 DATABASE INITIALIZATION")
+    print("=" * 80)
     
-    results = {
-        'postgresql': init_postgresql(),
-        'influxdb': init_influxdb()
-    }
+    success = True
     
-    logger.info("\n" + "=" * 60)
-    logger.info("📊 INITIALIZATION SUMMARY")
-    logger.info("=" * 60)
+    # PostgreSQL
+    if not init_postgres():
+        success = False
     
-    for db, success in results.items():
-        status = "✅ SUCCESS" if success else "❌ FAILED"
-        logger.info(f"{db}: {status}")
+    # InfluxDB
+    if not init_influxdb():
+        success = False
     
-    all_success = all(results.values())
-    
-    if all_success:
-        logger.info("\n🎉 All databases initialized successfully!")
-        return 0
+    # Summary
+    print("\n" + "=" * 80)
+    if success:
+        print("✅ ALL DATABASES INITIALIZED SUCCESSFULLY")
     else:
-        logger.error("\n❌ Some databases failed to initialize")
-        return 1
+        print("⚠️  SOME DATABASES FAILED TO INITIALIZE")
+    print("=" * 80)
+    
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

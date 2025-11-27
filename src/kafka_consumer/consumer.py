@@ -1,164 +1,220 @@
 """
-Kafka Consumer for vital signs data
+Kafka Consumer for ICU Vital Signs
 """
 import json
 import logging
-from typing import Dict, Optional, Callable
+from typing import Callable, Optional
 from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 
 from config.config import settings
-from src.stream_processing.processor import StreamProcessor
-from src.storage.influx_schema import InfluxDBWriter
 from src.kafka_producer.producer import VitalSignsProducer
-
-# ✅ FIX: Change onnx_predictor to nnx_predictor
-# from src.ml_models.nnx_predictor import ONNXPredictor
 
 logger = logging.getLogger(__name__)
 
+
 class VitalSignsConsumer:
-    """Kafka consumer for processing vital signs"""
+    """
+    Base Kafka Consumer for Vital Signs
+    """
     
     def __init__(
         self,
-        bootstrap_servers: str = None,
-        topic: str = None,
-        group_id: str = None
+        bootstrap_servers: str = settings.KAFKA_BOOTSTRAP_SERVERS,
+        topic: str = settings.KAFKA_TOPIC_VITAL_SIGNS,
+        group_id: str = "icu-consumers",
+        auto_offset_reset: str = "latest"
     ):
-        self.topic = topic or settings.KAFKA_TOPIC_VITAL_SIGNS
-        self.bootstrap_servers = bootstrap_servers or settings.KAFKA_BOOTSTRAP_SERVERS
-        self.group_id = group_id or settings.KAFKA_CONSUMER_GROUP
+        """
+        Initialize Kafka Consumer
         
-        # Initialize components
-        self.processor = StreamProcessor()
-        self.influx_storage = InfluxDBWriter(
-            url=settings.INFLUX_URL,
-            token=settings.INFLUX_TOKEN,
-            org=settings.INFLUX_ORG,
-            bucket=settings.INFLUX_BUCKET
+        Args:
+            bootstrap_servers: Kafka broker address
+            topic: Topic to consume from
+            group_id: Consumer group ID
+            auto_offset_reset: Where to start reading ('earliest' or 'latest')
+        """
+        self.bootstrap_servers = bootstrap_servers
+        self.topic = topic
+        self.group_id = group_id
+        
+        # Create Kafka consumer
+        self.consumer = KafkaConsumer(
+            self.topic,
+            bootstrap_servers=self.bootstrap_servers,
+            group_id=self.group_id,
+            auto_offset_reset=auto_offset_reset,
+            enable_auto_commit=True,
+            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
-        self.alert_producer = VitalSignsProducer(topic=settings.KAFKA_TOPIC_ALERTS)
+        
+        # Alert producer (for sending alerts)
+        self.alert_producer = VitalSignsProducer(
+            bootstrap_servers=self.bootstrap_servers,
+            topic=settings.KAFKA_TOPIC_ALERTS
+        )
         
         # Statistics
         self.stats = {
-            "processed": 0,
-            "failed": 0,
-            "alerts_sent": 0
+            'received': 0,
+            'processed': 0,
+            'failed': 0,
+            'alerts_sent': 0
         }
         
-        try:
-            self.consumer = KafkaConsumer(
-                self.topic,
-                bootstrap_servers=self.bootstrap_servers,
-                group_id=self.group_id,
-                auto_offset_reset='latest',
-                enable_auto_commit=True,
-                auto_commit_interval_ms=5000,
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                key_deserializer=lambda k: k.decode('utf-8') if k else None,
-                max_poll_records=100,
-                session_timeout_ms=30000,
-                heartbeat_interval_ms=10000
-            )
-            logger.info(f"✅ Consumer initialized")
-            logger.info(f"📡 Topic: {self.topic}")
-            logger.info(f"👥 Group: {self.group_id}")
-        
-        except KafkaError as e:
-            logger.error(f"❌ Failed to initialize consumer: {e}")
-            raise
+        logger.info("✅ Consumer initialized")
+        logger.info(f"📡 Topic: {self.topic}")
+        logger.info(f"👥 Group: {self.group_id}")
     
-    def consume_messages(self, process_callback: Optional[Callable] = None):
+    def consume_messages(
+        self,
+        process_callback: Optional[Callable] = None,
+        max_messages: Optional[int] = None
+    ):
         """
         Main consumption loop
         
         Args:
-            process_callback: Optional callback for custom processing
+            process_callback: Function to process each message
+            max_messages: Maximum messages to consume (None = infinite)
         """
         logger.info("🚀 Starting consumer...")
         logger.info("⏳ Waiting for messages...")
         
+        message_count = 0
+        
         try:
             for message in self.consumer:
                 try:
+                    # Parse message
                     reading = message.value
+                    self.stats['received'] += 1
                     
-                    # Call custom callback if provided
+                    # Process message
                     if process_callback:
-                        should_continue = process_callback(reading)
-                        if not should_continue:
-                            continue
+                        success = process_callback(reading)
+                    else:
+                        # Default processing
+                        success = self._default_process(reading)
                     
-                    # Process reading
-                    processed_reading = self.processor.process_reading(reading)
+                    if success:
+                        self.stats['processed'] += 1
+                    else:
+                        self.stats['failed'] += 1
                     
-                    # Store in InfluxDB
-                    self.influx_storage.write_vital_signs(processed_reading)
-                    
-                    # Send alert if high risk
-                    risk_level = processed_reading["risk_assessment"]["risk_level"]
-                    if risk_level in ["HIGH", "CRITICAL"]:
-                        self._send_alert(processed_reading)
-                        self.stats["alerts_sent"] += 1
-                    
-                    self.stats["processed"] += 1
-                    
-                    # Log progress every 10 messages
-                    if self.stats["processed"] % 10 == 0:
-                        logger.info(f"📈 Processed: {self.stats['processed']} | "
-                                  f"Alerts: {self.stats['alerts_sent']}")
+                    # Check max messages limit
+                    message_count += 1
+                    if max_messages and message_count >= max_messages:
+                        logger.info(f"✅ Reached max messages limit: {max_messages}")
+                        break
                 
                 except Exception as e:
-                    self.stats["failed"] += 1
+                    self.stats['failed'] += 1
                     logger.error(f"❌ Processing error: {e}")
-                    continue
         
         except KeyboardInterrupt:
             logger.info("\n⚠️  Consumer interrupted by user")
         
         finally:
-            self._log_summary()
+            self._print_summary()
     
-    def _send_alert(self, reading: Dict):
-        """Send alert for high-risk patient"""
-        alert = {
-            "patient_id": reading["patient_id"],
-            "alert_type": "HIGH_RISK",
-            "risk_level": reading["risk_assessment"]["risk_level"],
-            "risk_score": reading["risk_assessment"]["risk_score"],
-            "critical_event": reading["risk_assessment"]["critical_event"],
-            "timestamp": reading["timestamp"],
-            "message": f"🚨 {reading['risk_assessment']['risk_level']} RISK: {reading['patient_id']}"
-        }
+    def _default_process(self, reading: dict) -> bool:
+        """
+        Default message processing (can be overridden)
         
+        Args:
+            reading: Message data
+        
+        Returns:
+            True if processed successfully
+        """
+        patient_id = reading.get('patient_id', 'Unknown')
+        timestamp = reading.get('timestamp', 'Unknown')
+        
+        logger.info(f"📨 Received: {patient_id} at {timestamp}")
+        
+        # Check for critical vitals
+        vital_signs = reading.get('vital_signs', {})
+        
+        # Simple alerting logic
+        hr = vital_signs.get('heart_rate', 0)
+        spo2 = vital_signs.get('spo2', 100)
+        
+        if hr > 120 or hr < 50 or spo2 < 90:
+            logger.warning(f"🚨 Critical vitals for {patient_id}!")
+            self._send_alert(reading, "CRITICAL_VITALS")
+        
+        return True
+    
+    def _send_alert(self, reading: dict, alert_type: str):
+        """Send alert to Kafka alert topic"""
         try:
-            self.alert_producer.send_alert(alert)
-            logger.warning(f"🚨 Alert sent for {reading['patient_id']}")
+            alert = {
+                'alert_type': alert_type,
+                'patient_id': reading.get('patient_id'),
+                'timestamp': reading.get('timestamp'),
+                'vital_signs': reading.get('vital_signs'),
+                'severity': 'HIGH'
+            }
+            
+            self.alert_producer.send_message(alert)
+            self.stats['alerts_sent'] += 1
+            
         except Exception as e:
             logger.error(f"❌ Failed to send alert: {e}")
     
-    def _log_summary(self):
-        """Log consumption summary"""
+    def _print_summary(self):
+        """Print consumption summary"""
         logger.info("\n" + "=" * 70)
         logger.info("📊 CONSUMER SUMMARY")
         logger.info("=" * 70)
         logger.info(f"✅ Messages processed: {self.stats['processed']}")
         logger.info(f"❌ Messages failed: {self.stats['failed']}")
         logger.info(f"🚨 Alerts sent: {self.stats['alerts_sent']}")
-        
-        if self.stats["processed"] > 0:
-            success_rate = (self.stats["processed"] / (self.stats["processed"] + self.stats["failed"]) * 100)
-            logger.info(f"🎯 Success rate: {success_rate:.2f}%")
-        
         logger.info("=" * 70)
     
     def close(self):
-        """Close all connections"""
+        """Close consumer and cleanup"""
         try:
             self.consumer.close()
             self.alert_producer.close()
-            self.influx_storage.close()
             logger.info("✅ Consumer closed successfully")
         except Exception as e:
-            logger.error(f"❌ Error closing consumer: {e}")
+            logger.error(f"Error closing consumer: {e}")
+
+
+class FaultTolerantConsumer(VitalSignsConsumer):
+    """
+    Fault-tolerant consumer with retry logic
+    """
+    
+    def __init__(self, *args, max_retries: int = 3, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_retries = max_retries
+    
+    def consume_messages(self, process_callback=None, max_messages=None):
+        """Override with retry logic"""
+        
+        def retry_wrapper(reading):
+            """Wrapper with retry logic"""
+            for attempt in range(self.max_retries):
+                try:
+                    if process_callback:
+                        return process_callback(reading)
+                    else:
+                        return self._default_process(reading)
+                
+                except Exception as e:
+                    if attempt < self.max_retries - 1:
+                        logger.warning(f"⚠️  Retry {attempt + 1}/{self.max_retries}: {e}")
+                    else:
+                        logger.error(f"❌ Failed after {self.max_retries} attempts: {e}")
+                        return False
+            
+            return False
+        
+        # Call parent with retry wrapper
+        super().consume_messages(
+            process_callback=retry_wrapper,
+            max_messages=max_messages
+        )

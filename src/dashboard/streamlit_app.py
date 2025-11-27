@@ -26,6 +26,17 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ✅ Load WebSocket Alert Component
+@st.cache_data
+def load_alert_component():
+    """Load alert HTML component with WebSocket"""
+    alert_html_path = Path(__file__).parent / "alert_component.html"
+    with open(alert_html_path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+# Inject WebSocket alert component
+st.components.v1.html(load_alert_component(), height=0, scrolling=False)
+
 # Custom CSS
 st.markdown("""
 <style>
@@ -193,11 +204,47 @@ def main():
     # Header
     st.title("🏥 ICU Real-Time Monitoring Dashboard")
     st.markdown("---")
+
+    # --- 🆕 NEW: QUẢN LÝ TRẠNG THÁI (SESSION STATE) ---
+    # Giúp Streamlit "nhớ" bệnh nhân đang chọn dù có refresh trang
+    if 'selected_patient_id' not in st.session_state:
+        st.session_state.selected_patient_id = None
     
     # Sidebar
     with st.sidebar:
         st.header("⚙️ Settings")
         
+        # --- ✏️ MODIFIED: CHUYỂN CHỌN BỆNH NHÂN RA SIDEBAR ---
+        # Lấy danh sách bệnh nhân một lần dùng chung
+        patients = get_active_patients()
+        
+        # Tạo dictionary để tra cứu nhanh: {ID: "Tên (ID)"}
+        patient_options = {p['patient_id']: f"{p['full_name']} ({p['patient_id']})" for p in patients}
+        
+        # Widget chọn bệnh nhân (Có chức năng tìm kiếm tích hợp sẵn của Streamlit)
+        # index=None nghĩa là mặc định không chọn ai
+        selected_id = st.selectbox(
+            "🔍 Focus Patient (Tab 2 & 3)",
+            options=list(patient_options.keys()),
+            format_func=lambda x: patient_options.get(x, x),
+            index=0 if patients else None,
+            key="sb_patient_select" # Key quan trọng để giữ trạng thái
+        )
+        
+        # Cập nhật session state
+        st.session_state.selected_patient_id = selected_id
+
+        st.markdown("---")
+        st.markdown("---")
+        st.subheader("🗂️ Sort & Filter")
+        
+        # Widget chọn tiêu chí sắp xếp
+        sort_option = st.selectbox(
+            "Sort Patients By:",
+            options=["Risk Level (Highest First)", "Name (A-Z)", "ID (Ascending)", "Admission Time (Newest)"],
+            index=0 # Mặc định chọn Risk Level
+        )
+
         # Time range selector
         time_range = st.selectbox(
             "Time Range",
@@ -211,36 +258,45 @@ def main():
         if auto_refresh:
             refresh_interval = st.slider("Refresh Interval (seconds)", 5, 60, 10)
         
-        st.markdown("---")
-        st.markdown("### 📊 System Status")
-        
-        # System stats
-        patients = get_active_patients()
-        st.metric("Active Patients", len(patients))
-        
-        risk_dist = get_risk_distribution()
-        for level in ['CRITICAL', 'HIGH', 'MODERATE', 'STABLE']:
-            if level in risk_dist:
-                emoji = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MODERATE': '🟡', 'STABLE': '🟢'}[level]
-                st.metric(f"{emoji} {level}", risk_dist[level])
     
     # Main content
     tab1, tab2, tab3 = st.tabs(["👥 Patient Overview", "📈 Vital Signs", "🚨 Alerts"])
     
     with tab1:
-        st.header("Active Patients")
+        st.header("Active Patients Overview")
         
-        patients = get_active_patients()
+        # --- 🆕 NEW: THANH TÌM KIẾM CHO TAB OVERVIEW ---
+        # Giúp lọc nhanh danh sách thẻ bệnh nhân
+        search_query = st.text_input("🔎 Filter Patients (Name, ID, Diagnosis)", "").lower()
         
         if not patients:
             st.info("ℹ️ No active patients")
         else:
+            # Lọc danh sách dựa trên từ khóa tìm kiếm
+            filtered_patients = [
+                p for p in patients 
+                if search_query in p['full_name'].lower() 
+                or search_query in p['patient_id'].lower()
+                or (p['diagnosis'] and search_query in p['diagnosis'].lower())
+            ]
+
             # Sort by risk level
             risk_order = {'CRITICAL': 0, 'HIGH': 1, 'MODERATE': 2, 'STABLE': 3, None: 4}
-            patients_sorted = sorted(patients, key=lambda x: risk_order.get(x['risk_level'], 4))
+            patients_sorted = sorted(filtered_patients, key=lambda x: risk_order.get(x['risk_level'], 4))
             
+            # Hiển thị số lượng tìm thấy
+            if search_query:
+                st.caption(f"Found {len(patients_sorted)} matching patients.")
+
             for patient in patients_sorted:
-                with st.expander(f"{patient['full_name']} - {patient['risk_level'] or 'STABLE'}", expanded=True):
+                # Expander mở sẵn nếu là bệnh nhân đang chọn ở Sidebar
+                is_expanded = (patient['patient_id'] == st.session_state.selected_patient_id)
+                
+                # Thêm icon cảnh báo vào tiêu đề expander
+                risk_icon = "🔴" if patient['risk_level'] == 'CRITICAL' else "🟢"
+                expander_title = f"{risk_icon} {patient['full_name']} ({patient['patient_id']})"
+                
+                with st.expander(expander_title, expanded=True): # Luôn expanded=True cho dễ nhìn dashboard tổng quan
                     render_patient_card(patient)
                     
                     # Get and display vitals
@@ -252,104 +308,144 @@ def main():
                         
                         col1, col2, col3, col4 = st.columns(4)
                         with col1:
-                            st.metric("💓 Heart Rate", f"{latest['heart_rate']:.0f} bpm" if pd.notna(latest['heart_rate']) else "N/A")
+                            st.metric("💓 Heart Rate", f"{latest['heart_rate']:.0f}" if pd.notna(latest['heart_rate']) else "--")
                         with col2:
-                            st.metric("🫁 SpO2", f"{latest['spo2']:.0f}%" if pd.notna(latest['spo2']) else "N/A")
+                            st.metric("🫁 SpO2", f"{latest['spo2']:.0f}%" if pd.notna(latest['spo2']) else "--")
                         with col3:
-                            st.metric("🌡️ Temperature", f"{latest['temperature']:.1f}°C" if pd.notna(latest['temperature']) else "N/A")
+                            st.metric("🌡️ Temp", f"{latest['temperature']:.1f}°C" if pd.notna(latest['temperature']) else "--")
                         with col4:
-                            st.metric("🫀 BP", f"{latest['bp_systolic']:.0f}/{latest['bp_diastolic']:.0f}" if pd.notna(latest['bp_systolic']) else "N/A")
+                            st.metric("🫀 BP", f"{latest['bp_systolic']:.0f}/{latest['bp_diastolic']:.0f}" if pd.notna(latest['bp_systolic']) else "--")
                     else:
-                        st.warning("⚠️ No vital signs data available")
+                        st.warning("⚠️ No data stream")
     
     with tab2:
-        st.header("Vital Signs Trends")
+        # --- 🆕 NEW: LAYOUT TÌM KIẾM TRONG TAB ---
+        # Chia cột: Bên trái là Tiêu đề, Bên phải là Ô tìm kiếm nhanh
+        t2_col1, t2_col2 = st.columns([3, 1])
         
-        patients = get_active_patients()
-        
-        if patients:
-            # Patient selector
-            selected_patient = st.selectbox(
-                "Select Patient",
-                options=[p['patient_id'] for p in patients],
-                format_func=lambda x: next(p['full_name'] for p in patients if p['patient_id'] == x)
-            )
+        with t2_col2:
+            # Lấy danh sách ID để làm options
+            patient_ids = [p['patient_id'] for p in patients]
             
-            # Get vitals
-            vitals_df = get_patient_vitals(selected_patient, time_range)
+            # Tìm vị trí (index) của bệnh nhân đang chọn trong session_state
+            # Để set giá trị mặc định cho dropdown này khớp với Sidebar
+            current_index = 0
+            if st.session_state.selected_patient_id in patient_ids:
+                current_index = patient_ids.index(st.session_state.selected_patient_id)
+            
+            # Widget chọn bệnh nhân tại chỗ (Local Selector)
+            selected_in_tab = st.selectbox(
+                "🔎 Quick Search / Switch Patient",
+                options=patient_ids,
+                format_func=lambda x: next((f"{p['full_name']} ({p['patient_id']})" for p in patients if p['patient_id'] == x), x),
+                index=current_index,
+                key="tab2_patient_selector",
+                label_visibility="collapsed", # Ẩn nhãn cho gọn
+                placeholder="Type name or ID..."
+            )
+
+            # --- LOGIC ĐỒNG BỘ ---
+            # Nếu người dùng chọn người khác ở đây, cập nhật ngược lại Session State
+            if selected_in_tab != st.session_state.selected_patient_id:
+                st.session_state.selected_patient_id = selected_in_tab
+                st.rerun() # Load lại trang để Sidebar cũng cập nhật theo
+
+        # --- PHẦN HIỂN THỊ BIỂU ĐỒ (Code cũ đã tinh chỉnh) ---
+        current_id = st.session_state.selected_patient_id
+        
+        with t2_col1:
+            if current_id:
+                # Lấy tên bệnh nhân để hiện lên tiêu đề
+                p_name = next((p['full_name'] for p in patients if p['patient_id'] == current_id), "Unknown")
+                st.subheader(f"📈 Vital Signs: {p_name}")
+            else:
+                st.subheader("📈 Vital Signs Trends")
+
+        if current_id:
+            # Lấy dữ liệu
+            vitals_df = get_patient_vitals(current_id, time_range)
             
             if not vitals_df.empty:
                 # Plot vitals
                 fig = go.Figure()
                 
-                # Heart Rate
+                # Heart Rate (Trục trái)
                 fig.add_trace(go.Scatter(
                     x=vitals_df['timestamp'],
                     y=vitals_df['heart_rate'],
                     name='Heart Rate',
+                    line=dict(color='#ff2b2b', width=2),
                     mode='lines+markers'
                 ))
                 
-                # SpO2
+                # SpO2 (Trục phải)
                 fig.add_trace(go.Scatter(
                     x=vitals_df['timestamp'],
                     y=vitals_df['spo2'],
                     name='SpO2',
+                    line=dict(color='#00f2ff', width=2),
                     mode='lines+markers',
                     yaxis='y2'
                 ))
                 
                 fig.update_layout(
-                    title='Vital Signs Trends',
                     xaxis_title='Time',
-                    yaxis_title='Heart Rate (bpm)',
-                    yaxis2=dict(
-                        title='SpO2 (%)',
-                        overlaying='y',
-                        side='right'
+                    yaxis=dict(
+                        title='Heart Rate (bpm)', 
+                        side='left', 
+                        showgrid=True,
+                        gridcolor='rgba(128,128,128,0.2)'
                     ),
-                    height=500
+                    yaxis2=dict(
+                        title='SpO2 (%)', 
+                        overlaying='y', 
+                        side='right', 
+                        showgrid=False
+                    ),
+                    height=450,
+                    margin=dict(l=20, r=20, t=30, b=20),
+                    legend=dict(orientation="h", y=1.1),
+                    hovermode="x unified" # Hiệu ứng hover đẹp hơn
                 )
                 
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # Show data table
-                st.subheader("📋 Detailed Data")
-                st.dataframe(vitals_df.tail(20), use_container_width=True)
+                # Bảng dữ liệu chi tiết
+                with st.expander("📋 View Raw Data History"):
+                    # Sắp xếp mới nhất lên đầu
+                    st.dataframe(
+                        vitals_df.sort_values(by='timestamp', ascending=False), 
+                        use_container_width=True
+                    )
             else:
-                st.warning("⚠️ No data available for selected patient")
+                # Thông báo đẹp hơn khi không có data
+                st.warning(f"⚠️ No vital signs data stream available for **{p_name}** ({current_id}) yet.")
+                st.info("💡 Tip: Check if the Simulator/Replayer is running.")
         else:
-            st.info("ℹ️ No active patients")
+            st.info("⬅️ Please select a patient to view trends.")
     
     with tab3:
         st.header("🚨 Active Alerts")
         
-        patients = get_active_patients()
         critical_patients = [p for p in patients if p['risk_level'] in ['CRITICAL', 'HIGH']]
         
         if critical_patients:
             for patient in critical_patients:
-                alert_type = "🔴 CRITICAL" if patient['risk_level'] == 'CRITICAL' else "🟠 HIGH"
+                alert_color = "red" if patient['risk_level'] == 'CRITICAL' else "orange"
+                alert_icon = "🔴" if patient['risk_level'] == 'CRITICAL' else "🟠"
                 
-                with st.container():
-                    col1, col2, col3 = st.columns([2, 2, 1])
-                    
-                    with col1:
-                        st.markdown(f"### {alert_type}")
-                        st.text(f"{patient['full_name']} ({patient['patient_id']})")
-                    
-                    with col2:
-                        st.text(f"Department: {patient['department']}")
-                        st.text(f"Diagnosis: {patient['diagnosis']}")
-                    
-                    with col3:
-                        st.metric("Risk Score", f"{patient['risk_score']:.2f}")
-                    
-                    st.markdown("---")
+                # Highlight card
+                st.markdown(f"""
+                <div style="padding: 1rem; border: 2px solid {alert_color}; border-radius: 10px; margin-bottom: 1rem;">
+                    <h3>{alert_icon} {patient['risk_level']} - {patient['full_name']}</h3>
+                    <p><b>Diagnosis:</b> {patient['diagnosis']}</p>
+                    <p><b>Risk Score:</b> {patient['risk_score']:.2f}</p>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.success("✅ No critical alerts")
+            st.success("✅ No critical alerts at this moment.")
     
-    # Auto refresh
+    # Auto refresh logic
     if auto_refresh:
         import time
         time.sleep(refresh_interval)
