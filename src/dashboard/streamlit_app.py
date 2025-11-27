@@ -474,6 +474,40 @@ def main():
         import time
         time.sleep(refresh_interval)
         st.rerun()
+    
+def get_recent_vitals(hours=1):
+    """Get recent vital signs from InfluxDB"""
+    try:
+        query = f'''
+        from(bucket: "{settings.INFLUX_BUCKET}")
+          |> range(start: -{hours}h)
+          |> filter(fn: (r) => r["_measurement"] == "vital_signs")
+          |> sort(columns: ["_time"], desc: true)
+          |> limit(n: 1000)
+        '''
+        
+        result = influx_client.query_api.query(query)
+        
+        # ✅ THÊM DEBUG
+        print(f"🔍 Streamlit Query: Found {len(result)} tables" if result else "❌ Streamlit Query: No data")
+        
+        data = []
+        for table in result:
+            for record in table.records:
+                data.append({
+                    'time': record.get_time(),
+                    'patient_id': record.values.get('patient_id'),
+                    'field': record.get_field(),
+                    'value': record.get_value(),
+                    'risk_level': record.values.get('risk_level')
+                })
+        
+        print(f"📊 Streamlit Data: {len(data)} records")
+        return data
+        
+    except Exception as e:
+        print(f"❌ Streamlit InfluxDB Error: {e}")
+        return []
 
 if __name__ == "__main__":
     main()

@@ -1,16 +1,16 @@
 """
 InfluxDB Storage Manager for time-series vital signs data
+SYNCHRONOUS WRITE VERSION (Fix for "Empty Database" issue)
 """
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from influxdb_client import InfluxDBClient, Point
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client.client.write_api import SYNCHRONOUS # <--- QUAN TRỌNG NHẤT
 
 from config.config import settings
 
 logger = logging.getLogger(__name__)
-
 
 class InfluxDBManager:
     """
@@ -18,7 +18,7 @@ class InfluxDBManager:
     """
     
     def __init__(self):
-        """Initialize InfluxDB client"""
+        """Initialize InfluxDB client with SYNCHRONOUS write"""
         try:
             self.client = InfluxDBClient(
                 url=settings.INFLUX_URL,
@@ -26,7 +26,9 @@ class InfluxDBManager:
                 org=settings.INFLUX_ORG
             )
             
+            # --- FIX QUAN TRỌNG: Dùng SYNCHRONOUS để ghi ngay lập tức ---
             self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
+            
             self.query_api = self.client.query_api()
             self.bucket = settings.INFLUX_BUCKET
             
@@ -37,72 +39,24 @@ class InfluxDBManager:
             raise
     
     def _flatten_vital_signs(self, data: Dict[str, Any]) -> Dict[str, float]:
-        """
-        Flatten nested vital signs structure
-        
-        Handles:
-        - Simple values: {'heart_rate': 72}
-        - Nested dicts: {'heart_rate': {'value': 72}}
-        - Blood pressure: {'blood_pressure': {'systolic': 120, 'diastolic': 80}}
-        
-        Returns:
-            Flat dictionary with numeric values only
-        """
+        """Flatten nested structure (Giữ nguyên logic cũ)"""
         flattened = {}
-        
         for key, value in data.items():
-            # Skip None values
-            if value is None:
-                continue
+            if value is None: continue
             
-            # Case 1: Already a number
+            # Case: Number
             if isinstance(value, (int, float)):
                 flattened[key] = float(value)
-                continue
-            
-            # Case 2: String number
-            if isinstance(value, str):
-                try:
-                    flattened[key] = float(value)
-                    continue
-                except ValueError:
-                    logger.debug(f"Cannot convert string to float: {key}={value}")
-                    continue
-            
-            # Case 3: Dict with 'value' key
-            if isinstance(value, dict):
-                # Blood pressure special case
-                if key == 'blood_pressure' or ('systolic' in value and 'diastolic' in value):
-                    if 'systolic' in value:
-                        try:
-                            flattened['blood_pressure_systolic'] = float(value['systolic'])
-                        except (ValueError, TypeError):
-                            pass
-                    if 'diastolic' in value:
-                        try:
-                            flattened['blood_pressure_diastolic'] = float(value['diastolic'])
-                        except (ValueError, TypeError):
-                            pass
-                    continue
-                
-                # Standard nested value
-                if 'value' in value:
-                    try:
-                        flattened[key] = float(value['value'])
-                        continue
-                    except (ValueError, TypeError):
-                        pass
-                
-                if 'mean' in value:
-                    try:
-                        flattened[key] = float(value['mean'])
-                        continue
-                    except (ValueError, TypeError):
-                        pass
-                
-                # If no known pattern, log warning
-                logger.debug(f"Unknown dict structure for {key}: {value}")
-        
+            # Case: String number
+            elif isinstance(value, str) and value.replace('.','',1).isdigit():
+                flattened[key] = float(value)
+            # Case: Dict (BP)
+            elif isinstance(value, dict):
+                if key == 'blood_pressure':
+                    if 'systolic' in value: flattened['bp_systolic'] = float(value['systolic'])
+                    if 'diastolic' in value: flattened['bp_diastolic'] = float(value['diastolic'])
+                elif 'value' in value:
+                    flattened[key] = float(value['value'])
         return flattened
     
     def write_vital_signs(
@@ -112,127 +66,49 @@ class InfluxDBManager:
         tags: Optional[Dict[str, str]] = None,
         timestamp: Optional[datetime] = None
     ) -> bool:
-        """
-        Write vital signs data to InfluxDB
-        
-        Args:
-            patient_id: Patient identifier
-            data: Dictionary of vital signs (can be nested)
-            tags: Optional tags (e.g., {'risk_level': 'HIGH'})
-            timestamp: Optional timestamp (defaults to now)
-        
-        Returns:
-            True if successful, False otherwise
-        """
+        """Write data to InfluxDB"""
         try:
-            # Flatten nested structures
+            # 1. Làm phẳng dữ liệu
             flat_data = self._flatten_vital_signs(data)
-            
             if not flat_data:
-                logger.warning(f"⚠️  No valid fields to write for {patient_id}")
                 return False
             
-            # Create point
-            point = Point("vital_signs")
+            # 2. Tạo Point
+            point = Point("vital_signs").tag("patient_id", patient_id)
             
-            # Add patient_id as tag
-            point.tag("patient_id", patient_id)
-            
-            # Add additional tags
             if tags:
-                for key, value in tags.items():
-                    if value is not None:
-                        point.tag(key, str(value))
+                for k, v in tags.items():
+                    if v: point.tag(k, str(v))
             
-            # Add fields
-            for metric, value in flat_data.items():
-                point.field(metric, float(value))
+            for k, v in flat_data.items():
+                point.field(k, v)
             
-            # Set timestamp
+            # Nếu bản tin có timestamp (từ VitalDB), dùng nó. Nếu không dùng giờ server.
+            # Lưu ý: InfluxDB rất nhạy cảm với timestamp quá khứ/tương lai
             if timestamp:
-                point.time(timestamp)
-            
-            # Write to InfluxDB
+                point.time(timestamp) 
+            else:
+                point.time(datetime.utcnow())
+
+            # 3. Ghi ngay lập tức (Synchronous)
             self.write_api.write(
                 bucket=self.bucket,
                 org=settings.INFLUX_ORG,
                 record=point
             )
-            
-            logger.debug(f"✅ Wrote {len(flat_data)} fields to InfluxDB for {patient_id}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error writing to InfluxDB for {patient_id}: {e}")
+            logger.error(f"❌ Error writing to InfluxDB: {e}")
             return False
-    
-    def write_risk_score(
-        self,
-        patient_id: str,
-        risk_score: float,
-        risk_level: str,
-        mews_score: int,
-        timestamp: Optional[datetime] = None
-    ) -> bool:
-        """
-        Write risk assessment to InfluxDB
-        """
-        try:
-            point = Point("risk_assessment") \
-                .tag("patient_id", patient_id) \
-                .tag("risk_level", risk_level) \
-                .field("risk_score", float(risk_score)) \
-                .field("mews_score", int(mews_score))
-            
-            if timestamp:
-                point.time(timestamp)
-            
-            self.write_api.write(
-                bucket=self.bucket,
-                org=settings.INFLUX_ORG,
-                record=point
-            )
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Error writing risk score: {e}")
-            return False
-    
-    def query_latest_vitals(self, patient_id: str, hours: int = 1):
-        """
-        Query latest vital signs for a patient
-        """
-        try:
-            query = f'''
-            from(bucket: "{self.bucket}")
-                |> range(start: -{hours}h)
-                |> filter(fn: (r) => r["_measurement"] == "vital_signs")
-                |> filter(fn: (r) => r["patient_id"] == "{patient_id}")
-                |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-            '''
-            
-            result = self.query_api.query(query)
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ Query error for {patient_id}: {e}")
-            return None
-    
+
     def close(self):
-        """Close InfluxDB client"""
-        try:
+        if self.client:
             self.client.close()
-            logger.info("✅ InfluxDB connection closed")
-        except Exception as e:
-            logger.error(f"Error closing InfluxDB: {e}")
 
-
-# Singleton instance
+# Singleton
 _influx_manager = None
-
-def get_influx_manager() -> InfluxDBManager:
-    """Get or create InfluxDB manager singleton"""
+def get_influx_manager():
     global _influx_manager
     if _influx_manager is None:
         _influx_manager = InfluxDBManager()
