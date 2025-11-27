@@ -38,12 +38,26 @@ class PatientSimulator:
             
             if pid not in self.generators:
                 # New patient
+<<<<<<< HEAD
                 self.generators[pid] = VitalSignsGenerator(
                     patient_id=pid,
                     device_id=device_id,
                     profile=PatientProfile.HEALTHY  
                 )
                 self.patient_profiles[pid] = "HEALTHY"
+=======
+                # Determine initial profile from provided patient dict
+                prof_str = str(patient.get("profile", "HEALTHY")).upper()
+                if prof_str not in PatientProfile.__members__:
+                    prof_str = "HEALTHY"
+                init_profile = PatientProfile[prof_str]
+                self.generators[pid] = VitalSignsGenerator(
+                    patient_id=pid,
+                    device_id=device_id,
+                    profile=init_profile
+                )
+                self.patient_profiles[pid] = prof_str
+>>>>>>> 5518597 (Initial commit: reset and push to master)
                 logger.info(f"➕ Added patient {pid} ({device_id})")
             else:
                 # Update device_id if changed

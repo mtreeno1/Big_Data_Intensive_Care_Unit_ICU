@@ -16,8 +16,13 @@ Base = declarative_base()
 
 
 class Patient(Base):
+<<<<<<< HEAD
     """Patient information table"""
     __tablename__ = 'patients'
+=======
+    """Patient information table (storage view)"""
+    __tablename__ = 'patients_storage'
+>>>>>>> 5518597 (Initial commit: reset and push to master)
     
     id = Column(Integer, primary_key=True)
     patient_id = Column(String(50), unique=True, nullable=False, index=True)
@@ -90,12 +95,18 @@ class PostgreSQLWriter:
             Base.metadata.create_all(self.engine)  # ✅ ĐÃ SỬA: metadata thay vì extra_data
             self.Session = sessionmaker(bind=self.engine)
             logger.info(f"✅ Connected to PostgreSQL")
+<<<<<<< HEAD
             self.available = True
         except Exception as e:
             logger.error(f"❌ Failed to connect to PostgreSQL: {e}")
             self.engine = None
             self.Session = None
             self.available = False
+=======
+        except Exception as e:
+            logger.error(f"❌ Failed to connect to PostgreSQL: {e}")
+            raise
+>>>>>>> 5518597 (Initial commit: reset and push to master)
     
     def upsert_patient(self, patient_id: str, profile: str, metadata: Optional[Dict] = None) -> bool:
         """
@@ -109,10 +120,13 @@ class PostgreSQLWriter:
         Returns:
             True if successful
         """
+<<<<<<< HEAD
         if not self.available or self.Session is None:
             logger.debug("Skipping PostgreSQL upsert; writer unavailable")
             return False
 
+=======
+>>>>>>> 5518597 (Initial commit: reset and push to master)
         session = self.Session()
         try:
             patient = session.query(Patient).filter_by(patient_id=patient_id).first()
@@ -160,10 +174,13 @@ class PostgreSQLWriter:
         Returns:
             True if successful
         """
+<<<<<<< HEAD
         if not self.available or self.Session is None:
             logger.debug("Skipping PostgreSQL event insert; writer unavailable")
             return False
 
+=======
+>>>>>>> 5518597 (Initial commit: reset and push to master)
         session = self.Session()
         try:
             event = Event(
@@ -206,10 +223,13 @@ class PostgreSQLWriter:
         Returns:
             True if successful
         """
+<<<<<<< HEAD
         if not self.available or self.Session is None:
             logger.debug("Skipping PostgreSQL alert insert; writer unavailable")
             return False
 
+=======
+>>>>>>> 5518597 (Initial commit: reset and push to master)
         session = self.Session()
         try:
             alert = Alert(
@@ -251,10 +271,13 @@ class PostgreSQLWriter:
         Returns:
             True if successful
         """
+<<<<<<< HEAD
         if not self.available or self.Session is None:
             logger.debug("Skipping PostgreSQL metrics insert; writer unavailable")
             return False
 
+=======
+>>>>>>> 5518597 (Initial commit: reset and push to master)
         session = self.Session()
         try:
             metrics = ConsumerMetrics(
@@ -278,7 +301,10 @@ class PostgreSQLWriter:
     
     def close(self):
         """Close database connection"""
+<<<<<<< HEAD
         if self.engine is None:
             return
+=======
+>>>>>>> 5518597 (Initial commit: reset and push to master)
         self.engine.dispose()
         logger.info("✅ PostgreSQL connection closed")

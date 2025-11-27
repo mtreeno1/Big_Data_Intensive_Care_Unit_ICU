@@ -107,6 +107,13 @@ class VitalSignsProducer:
             logger.error(f"❌ Unexpected error sending reading: {e}")
             return False
     
+<<<<<<< HEAD
+=======
+    def send_alert(self, alert: Dict, key: Optional[str] = None) -> bool:
+        """Convenience wrapper to send alert objects to the configured topic."""
+        return self.send_reading(alert, key)
+
+>>>>>>> 5518597 (Initial commit: reset and push to master)
     def send_batch(self, readings: List[Dict]) -> Dict[str, int]:
         """
         Send multiple readings to Kafka

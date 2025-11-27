@@ -12,8 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.config import settings
+<<<<<<< HEAD
 from src.storage.postgres_schema import PostgreSQLWriter, Base
 from src.storage.influx_schema import InfluxDBWriter
+=======
+from src.storage.postgres_schema import PostgreSQLWriter, Base as StorageBase
+from src.storage.influx_schema import InfluxDBWriter
+from src.database.models import Base as AppBase
+>>>>>>> 5518597 (Initial commit: reset and push to master)
 from sqlalchemy import create_engine
 
 # Setup logging
@@ -32,11 +38,24 @@ def init_postgresql():
         # Create engine
         engine = create_engine(settings.get_postgres_url())
         
+<<<<<<< HEAD
         # Create all tables
         Base.metadata.create_all(engine)
         
         logger.info("✅ PostgreSQL initialized successfully")
         logger.info(f"   Created tables: {', '.join(Base.metadata.tables.keys())}")
+=======
+        # Create all tables for app ORM (patients, admissions, doctors)
+        AppBase.metadata.create_all(engine)
+        # Create storage tables (events, alerts, consumer_metrics, patients_storage)
+        StorageBase.metadata.create_all(engine)
+        
+        logger.info("✅ PostgreSQL initialized successfully")
+        from sqlalchemy import inspect
+        insp = inspect(engine)
+        tables = insp.get_table_names()
+        logger.info(f"   Created tables: {', '.join(tables)}")
+>>>>>>> 5518597 (Initial commit: reset and push to master)
         
         return True
         

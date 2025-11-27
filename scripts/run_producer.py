@@ -12,7 +12,11 @@ from collections import defaultdict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+<<<<<<< HEAD
 from sqlalchemy import select
+=======
+from sqlalchemy import select, text
+>>>>>>> 5518597 (Initial commit: reset and push to master)
 from src.database.session import SessionLocal
 from src.database.models import Patient
 from src.data_generation.patient_simulator import PatientSimulator  
@@ -28,6 +32,7 @@ class Colors:
     END = "\033[0m"
 
 def load_active_patients():
+<<<<<<< HEAD
     """Load active patients from DB"""
     with SessionLocal() as db:
         rows = db.execute(
@@ -42,6 +47,53 @@ def load_active_patients():
                 "device_id": r.device_id or f"DEV-{r.patient_id}",
             })
         return patients
+=======
+    """Load active patients from DB, tolerant to missing columns."""
+    with SessionLocal() as db:
+        try:
+            # Try minimal raw SQL to avoid schema mismatch (e.g., missing date_of_birth)
+            q = text("""
+                SELECT p.patient_id,
+                       COALESCE(p.device_id, '') AS device_id,
+                       COALESCE(a.risk_level, 'STABLE') AS risk_level
+                FROM patients p
+                JOIN admissions a ON a.patient_id = p.patient_id
+                WHERE p.active_monitoring IS TRUE
+                  AND a.discharge_time IS NULL
+            """)
+            rows = db.execute(q).fetchall()
+            patients = []
+            risk_to_profile = {
+                'CRITICAL': 'CRITICAL',
+                'HIGH': 'CRITICAL',
+                'MODERATE': 'AT_RISK',
+                'STABLE': 'HEALTHY',
+                None: 'HEALTHY'
+            }
+            for patient_id, device_id, risk_level in rows:
+                pid = str(patient_id)
+                dev = device_id or f"DEV-{pid}"
+                prof = risk_to_profile.get(risk_level, 'HEALTHY')
+                patients.append({
+                    "patient_id": pid,
+                    "profile": prof,
+                    "device_id": dev,
+                })
+            return patients
+        except Exception:
+            # Fallback to ORM if the above fails for any reason
+            rows = db.execute(
+                select(Patient).where(Patient.active_monitoring.is_(True))
+            ).scalars().all()
+            patients = []
+            for r in rows:
+                patients.append({
+                    "patient_id": r.patient_id,
+                    "profile": "HEALTHY",
+                    "device_id": r.device_id or f"DEV-{r.patient_id}",
+                })
+            return patients
+>>>>>>> 5518597 (Initial commit: reset and push to master)
 
 class VisualProducer:
     """Producer with real-time dashboard"""

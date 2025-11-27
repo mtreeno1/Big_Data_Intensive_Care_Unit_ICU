@@ -1,4 +1,5 @@
 """
+<<<<<<< HEAD
 Stream Processor
 Main processing logic for incoming vital signs
 """
@@ -210,3 +211,187 @@ class VitalSignsProcessor:
                 "🚨 Alert model flagged anomalies: %s",
                 {key: val for key, val in alerts.items() if val.get('is_alert')}
             )
+=======
+Stream processor: Analyze vital signs and update risk scores
+"""
+from typing import Dict, List
+import logging
+from datetime import datetime
+
+from src.database.session import SessionLocal
+from src.database.models import Admission
+from config.config import settings
+from src.ml_models.risk_scorer import RiskScorer
+from src.stream_processing.forecaster import VitalForecaster
+try:
+    from src.ml_models.joblib_predictor import RiskModelPredictor
+except Exception:
+    RiskModelPredictor = None  # type: ignore
+
+
+logger = logging.getLogger(__name__)
+
+class StreamProcessor:
+    """Processes streaming vital signs and updates risk assessments"""
+    
+    def __init__(self, forecast_horizon_sec: int = 300):
+        self.risk_scorer = RiskScorer()
+        self.ml_predictor = None
+        self.forecaster = VitalForecaster(window_size=60)
+        self.forecast_horizon_sec = forecast_horizon_sec
+        if getattr(settings, "USE_ML_MODEL", False) and RiskModelPredictor is not None:
+            try:
+                self.ml_predictor = RiskModelPredictor()
+                logger.info("✅ ML predictor enabled for risk assessment")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not enable ML predictor: {e}. Falling back to heuristic scorer.")
+    
+    def process_reading(self, reading: Dict) -> Dict:
+        """
+        Process a single vital signs reading
+        Update admission risk score if patient is admitted
+        """
+        patient_id = reading["patient_id"]
+        vital_signs = reading["vital_signs"]
+        critical_event = reading.get("critical_event", "none")
+        ts = reading.get("timestamp")
+        if isinstance(ts, str):
+            try:
+                ts_dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            except Exception:
+                ts_dt = datetime.utcnow()
+        elif isinstance(ts, datetime):
+            ts_dt = ts
+        else:
+            ts_dt = datetime.utcnow()
+        
+        # Heuristic baseline risk
+        heuristic = self.risk_scorer.assess_patient_risk(vital_signs, critical_event)
+        final_assessment = heuristic.copy()
+        final_assessment["source"] = "heuristic"
+        
+        # Optional ML model risk for current state
+        if self.ml_predictor is not None:
+            try:
+                ml_pred = self.ml_predictor.predict(reading)
+                # Apply critical event multiplier similar to heuristic
+                event_multiplier = {
+                    "none": 1.0,
+                    "cardiac_arrest": 2.0,
+                    "respiratory_failure": 1.8,
+                    "shock": 1.8,
+                    "sepsis": 1.5,
+                }.get(critical_event, 1.0)
+                ml_score = min(1.0, float(ml_pred.get("risk_score", 0.0)) * event_multiplier)
+                # Choose ML as primary if enabled
+                final_assessment = {
+                    "risk_score": round(ml_score, 3),
+                    "risk_level": self.risk_scorer.get_risk_level(ml_score).value,
+                    "critical_event": critical_event,
+                    "assessment_time": datetime.utcnow().isoformat() + "Z",
+                    "source": ml_pred.get("model", "ml"),
+                    "ml_details": {k: v for k, v in ml_pred.items() if k not in ("risk_score", "risk_level")},
+                    "heuristic_backup": {
+                        "risk_score": heuristic["risk_score"],
+                        "risk_level": heuristic["risk_level"],
+                    },
+                }
+            except Exception as e:
+                logger.error(f"❌ ML prediction failed for {patient_id}: {e}. Using heuristic result.")
+        
+        # Forecast risk at horizon
+        forecast = self._forecast_risk(patient_id, ts_dt, vital_signs, critical_event)
+        if forecast:
+            final_assessment["forecast"] = forecast
+        
+        # Update database if patient has active admission
+        self._update_admission_risk(patient_id, final_assessment)
+        
+        # Add risk data to reading
+        enriched_reading = reading.copy()
+        enriched_reading["risk_assessment"] = final_assessment
+        
+        logger.info(
+            f"📊 Risk assessment for {patient_id}: {final_assessment['risk_level']} ({final_assessment['risk_score']})"
+            + (f" | ⏭️  {forecast['risk_level']}@{forecast['horizon_sec']}s ({forecast['risk_score']})" if forecast else "")
+        )
+        
+        return enriched_reading
+
+    def _forecast_risk(self, patient_id: str, timestamp: datetime, vitals: Dict, critical_event: str) -> Dict | None:
+        try:
+            fc_vitals = self.forecaster.forecast_vitals(
+                patient_id, timestamp, vitals, horizon_sec=self.forecast_horizon_sec
+            )
+            if not fc_vitals:
+                return None
+            # Heuristic forecast
+            heur_fc = self.risk_scorer.assess_patient_risk(fc_vitals, critical_event)
+            fc_assessment = {
+                "risk_score": heur_fc["risk_score"],
+                "risk_level": heur_fc["risk_level"],
+                "horizon_sec": self.forecast_horizon_sec,
+            }
+            # ML forecast if available
+            if self.ml_predictor is not None:
+                fc_reading = {
+                    "patient_id": patient_id,
+                    "timestamp": (timestamp).isoformat(),
+                    "vital_signs": fc_vitals,
+                    "critical_event": critical_event,
+                }
+                try:
+                    ml_fc = self.ml_predictor.predict(fc_reading)
+                    ml_score = float(ml_fc.get("risk_score", fc_assessment["risk_score"]))
+                    ml_score = max(0.0, min(1.0, ml_score))
+                    # Prefer ML forecast
+                    fc_assessment.update({
+                        "risk_score": round(ml_score, 3),
+                        "risk_level": self.risk_scorer.get_risk_level(ml_score).value,
+                        "model": ml_fc.get("model", "ml"),
+                    })
+                except Exception:
+                    pass
+            return fc_assessment
+        except Exception as e:
+            logger.debug(f"Forecasting failed for {patient_id}: {e}")
+            return None
+    
+    def _update_admission_risk(self, patient_id: str, risk_assessment: Dict):
+        """Update admission record with latest risk score"""
+        try:
+            with SessionLocal() as db:
+                # Find active admission for patient
+                admission = db.query(Admission).filter(
+                    Admission.patient_id == patient_id,
+                    Admission.discharge_time.is_(None)  # Active admission
+                ).first()
+                
+                if admission:
+                    admission.current_risk_score = risk_assessment["risk_score"]
+                    admission.risk_level = risk_assessment["risk_level"]
+                    admission.updated_at = datetime.utcnow()
+                    
+                    db.commit()
+                    logger.info(f"✅ Updated risk for admission {admission.admission_id}")
+                else:
+                    logger.debug(f"No active admission found for {patient_id}")
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to update risk for {patient_id}: {e}")
+    
+    def process_batch(self, readings: List[Dict]) -> List[Dict]:
+        """Process batch of readings"""
+        processed = []
+        for reading in readings:
+            try:
+                processed_reading = self.process_reading(reading)
+                processed.append(processed_reading)
+            except Exception as e:
+                logger.error(f"Failed to process reading for {reading.get('patient_id')}: {e}")
+        
+        return processed
+
+# Backward compatibility alias for older imports
+VitalSignsProcessor = StreamProcessor
+>>>>>>> 5518597 (Initial commit: reset and push to master)

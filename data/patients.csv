@@ -1,0 +1,21 @@
+patient_id,full_name,dob,gender,device_id,blood_type,allergies,chronic_conditions
+PT-0001,Nguyen Van A,1987-05-10,M,DEV-PT-0001,O+,None,hypertension
+PT-0002,Tran Thi B,1990-03-21,F,DEV-PT-0002,A-,Penicillin,diabetes
+PT-0003,Le Van C,1980-12-15,M,DEV-PT-0003,B+,None,heart disease;copd
+PT-0004,Pham Thi D,1995-08-30,F,DEV-PT-0004,AB+,Seafood,asthma
+PT-0005,Hoang Van E,1975-03-22,M,DEV-PT-0005,O-,None,kidney disease
+PT-0006,Do Thi F,1988-11-11,F,DEV-PT-0006,A+,Peanut,hypertension;diabetes
+PT-0007,Vu Van G,1979-07-07,M,DEV-PT-0007,B-,None,none
+PT-0008,Nguyen Thi H,1992-01-19,F,DEV-PT-0008,O+,None,asthma
+PT-0009,Pham Van I,1983-06-02,M,DEV-PT-0009,AB-,Dust,heart disease
+PT-0010,Tran Thi K,1971-10-27,F,DEV-PT-0010,O+,None,copd
+PT-0011,Le Thi L,1998-02-05,F,DEV-PT-0011,B+,None,none
+PT-0012,Nguyen Van M,1985-09-14,M,DEV-PT-0012,A-,None,hypertension
+PT-0013,Pham Thi N,1977-12-03,F,DEV-PT-0013,O-,None,diabetes
+PT-0014,Hoang Van O,1969-04-28,M,DEV-PT-0014,B+,None,heart disease;kidney disease
+PT-0015,Do Thi P,1993-03-09,F,DEV-PT-0015,AB+,Shellfish,asthma;hypertension
+PT-0016,Vu Van Q,1982-08-16,M,DEV-PT-0016,O+,None,none
+PT-0017,Tran Thi R,1976-01-25,F,DEV-PT-0017,A+,None,diabetes;hypertension
+PT-0018,Le Van S,1989-05-12,M,DEV-PT-0018,B-,None,copd
+PT-0019,Nguyen Thi T,1991-09-30,F,DEV-PT-0019,O-,Pollen,asthma
+PT-0020,Pham Van U,1973-07-18,M,DEV-PT-0020,A-,None,heart disease
