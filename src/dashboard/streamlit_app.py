@@ -26,56 +26,93 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ✅ Load WebSocket Alert Component
-@st.cache_data
-def load_alert_component():
-    """Load alert HTML component with WebSocket"""
-    alert_html_path = Path(__file__).parent / "alert_component.html"
-    with open(alert_html_path, 'r', encoding='utf-8') as f:
-        return f.read()
-
-# Inject WebSocket alert component
-st.components.v1.html(load_alert_component(), height=0, scrolling=False)
+# Load Alert Component HTML
+alert_html_path = Path(__file__).parent / "alert_component.html"
+with open(alert_html_path, 'r', encoding='utf-8') as f:
+    alert_component_html = f.read()
 
 # Custom CSS
 st.markdown("""
 <style>
+    /* 1. Tinh chỉnh khoảng cách phần chính */
     .main > div {
-        padding-top: 2rem;
+        padding-top: 1.5rem;
     }
-    .stMetric {
-        background-color: #f0f2f6;
-        padding: 15px;
-        border-radius: 10px;
+
+    /* 2. Thiết kế lại Metric Card (Thẻ chỉ số sinh tồn) */
+    div[data-testid="stMetric"] {
+        background-color: #1e2530; /* Màu nền tối sang trọng */
+        border: 1px solid #2d3748; /* Viền xám nhẹ tạo khối */
+        padding: 15px 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3); /* Bóng đổ nhẹ */
+        transition: transform 0.2s ease; /* Hiệu ứng khi rê chuột */
     }
+    
+    div[data-testid="stMetric"]:hover {
+        border-color: #4a5568; /* Sáng viền khi hover */
+        transform: translateY(-2px); /* Nổi lên nhẹ */
+    }
+
+    /* Màu chữ tiêu đề nhỏ (Label) - Xám sáng */
+    div[data-testid="stMetricLabel"] {
+        font-size: 0.85rem !important;
+        color: #a0aec0 !important;
+        font-weight: 500;
+    }
+
+    /* Màu số liệu to (Value) - Trắng nổi bật */
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem !important;
+        color: #ffffff !important;
+        font-weight: 700;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+    }
+
+    /* 3. Thiết kế lại Risk Badges (Nhãn rủi ro) - Phong cách hiện đại */
+    /* Cấu trúc chung cho badge */
+    .risk-badge {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 700;
+        text-align: center;
+        display: inline-block;
+        font-size: 0.9rem;
+        letter-spacing: 0.5px;
+        backdrop-filter: blur(4px);
+        width: 100%;
+        margin-top: 5px;
+    }
+
+    /* CRITICAL: Đỏ thẫm + Viền đỏ tươi + Chữ đỏ sáng */
     .risk-critical {
-        background-color: #ff4444;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
+        background-color: rgba(220, 38, 38, 0.2); 
+        color: #fca5a5;
+        border: 1px solid #ef4444;
+        box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
     }
+
+    /* HIGH: Cam thẫm + Viền cam + Chữ cam sáng */
     .risk-high {
-        background-color: #ff9944;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
+        background-color: rgba(234, 88, 12, 0.2);
+        color: #fdba74;
+        border: 1px solid #f97316;
     }
+
+    /* MODERATE: Vàng thẫm + Viền vàng + Chữ vàng sáng */
     .risk-moderate {
-        background-color: #ffdd44;
-        color: black;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
+        background-color: rgba(202, 138, 4, 0.2);
+        color: #fde047;
+        border: 1px solid #eab308;
     }
+
+    /* STABLE: Xanh lục thẫm + Viền xanh + Chữ xanh sáng */
     .risk-stable {
-        background-color: #44ff44;
-        color: black;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-weight: bold;
+        background-color: rgba(22, 163, 74, 0.2);
+        color: #86efac;
+        border: 1px solid #22c55e;
     }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -201,6 +238,9 @@ def render_patient_card(patient):
 def main():
     """Main dashboard"""
     
+    # Embed Alert Component
+    st.components.v1.html(alert_component_html, height=0, scrolling=False)
+    
     # Header
     st.title("🏥 ICU Real-Time Monitoring Dashboard")
     st.markdown("---")
@@ -214,27 +254,28 @@ def main():
     with st.sidebar:
         st.header("⚙️ Settings")
         
-        # --- ✏️ MODIFIED: CHUYỂN CHỌN BỆNH NHÂN RA SIDEBAR ---
+        # --- ✏️ MODIFIED: CHỌN BỆNH NHÂN ---
         # Lấy danh sách bệnh nhân một lần dùng chung
         patients = get_active_patients()
         
         # Tạo dictionary để tra cứu nhanh: {ID: "Tên (ID)"}
         patient_options = {p['patient_id']: f"{p['full_name']} ({p['patient_id']})" for p in patients}
         
-        # Widget chọn bệnh nhân (Có chức năng tìm kiếm tích hợp sẵn của Streamlit)
-        # index=None nghĩa là mặc định không chọn ai
-        selected_id = st.selectbox(
-            "🔍 Focus Patient (Tab 2 & 3)",
-            options=list(patient_options.keys()),
-            format_func=lambda x: patient_options.get(x, x),
-            index=0 if patients else None,
-            key="sb_patient_select" # Key quan trọng để giữ trạng thái
-        )
-        
-        # Cập nhật session state
-        st.session_state.selected_patient_id = selected_id
+        # Widget chọn bệnh nhân
+        if patients:
+            selected_id = st.selectbox(
+                "🔍 Focus Patient (Tab 2 & 3)",
+                options=list(patient_options.keys()),
+                format_func=lambda x: patient_options.get(x, x),
+                index=0,
+                key="sb_patient_select"
+            )
+            st.session_state.selected_patient_id = selected_id
+        else:
+            st.warning("⚠️ No active patients found. Please load patients first.")
+            selected_id = None
+            st.session_state.selected_patient_id = None
 
-        st.markdown("---")
         st.markdown("---")
         st.subheader("🗂️ Sort & Filter")
         
@@ -242,7 +283,7 @@ def main():
         sort_option = st.selectbox(
             "Sort Patients By:",
             options=["Risk Level (Highest First)", "Name (A-Z)", "ID (Ascending)", "Admission Time (Newest)"],
-            index=0 # Mặc định chọn Risk Level
+            index=0
         )
 
         # Time range selector
@@ -256,7 +297,7 @@ def main():
         # Refresh interval
         auto_refresh = st.checkbox("Auto Refresh", value=True)
         if auto_refresh:
-            refresh_interval = st.slider("Refresh Interval (seconds)", 5, 60, 10)
+            refresh_interval = st.slider("Refresh Interval (seconds)", 2, 60, 10)
         
     
     # Main content
@@ -265,8 +306,7 @@ def main():
     with tab1:
         st.header("Active Patients Overview")
         
-        # --- 🆕 NEW: THANH TÌM KIẾM CHO TAB OVERVIEW ---
-        # Giúp lọc nhanh danh sách thẻ bệnh nhân
+        # Search bar
         search_query = st.text_input("🔎 Filter Patients (Name, ID, Diagnosis)", "").lower()
         
         if not patients:
@@ -289,14 +329,11 @@ def main():
                 st.caption(f"Found {len(patients_sorted)} matching patients.")
 
             for patient in patients_sorted:
-                # Expander mở sẵn nếu là bệnh nhân đang chọn ở Sidebar
                 is_expanded = (patient['patient_id'] == st.session_state.selected_patient_id)
-                
-                # Thêm icon cảnh báo vào tiêu đề expander
                 risk_icon = "🔴" if patient['risk_level'] == 'CRITICAL' else "🟢"
                 expander_title = f"{risk_icon} {patient['full_name']} ({patient['patient_id']})"
                 
-                with st.expander(expander_title, expanded=True): # Luôn expanded=True cho dễ nhìn dashboard tổng quan
+                with st.expander(expander_title, expanded=True):
                     render_patient_card(patient)
                     
                     # Get and display vitals
@@ -319,57 +356,46 @@ def main():
                         st.warning("⚠️ No data stream")
     
     with tab2:
-        # --- 🆕 NEW: LAYOUT TÌM KIẾM TRONG TAB ---
-        # Chia cột: Bên trái là Tiêu đề, Bên phải là Ô tìm kiếm nhanh
+        # Layout tìm kiếm
         t2_col1, t2_col2 = st.columns([3, 1])
         
         with t2_col2:
-            # Lấy danh sách ID để làm options
             patient_ids = [p['patient_id'] for p in patients]
             
-            # Tìm vị trí (index) của bệnh nhân đang chọn trong session_state
-            # Để set giá trị mặc định cho dropdown này khớp với Sidebar
             current_index = 0
             if st.session_state.selected_patient_id in patient_ids:
                 current_index = patient_ids.index(st.session_state.selected_patient_id)
             
-            # Widget chọn bệnh nhân tại chỗ (Local Selector)
             selected_in_tab = st.selectbox(
                 "🔎 Quick Search / Switch Patient",
                 options=patient_ids,
                 format_func=lambda x: next((f"{p['full_name']} ({p['patient_id']})" for p in patients if p['patient_id'] == x), x),
                 index=current_index,
                 key="tab2_patient_selector",
-                label_visibility="collapsed", # Ẩn nhãn cho gọn
+                label_visibility="collapsed",
                 placeholder="Type name or ID..."
             )
 
-            # --- LOGIC ĐỒNG BỘ ---
-            # Nếu người dùng chọn người khác ở đây, cập nhật ngược lại Session State
             if selected_in_tab != st.session_state.selected_patient_id:
                 st.session_state.selected_patient_id = selected_in_tab
-                st.rerun() # Load lại trang để Sidebar cũng cập nhật theo
+                st.rerun()
 
-        # --- PHẦN HIỂN THỊ BIỂU ĐỒ (Code cũ đã tinh chỉnh) ---
         current_id = st.session_state.selected_patient_id
         
         with t2_col1:
             if current_id:
-                # Lấy tên bệnh nhân để hiện lên tiêu đề
                 p_name = next((p['full_name'] for p in patients if p['patient_id'] == current_id), "Unknown")
                 st.subheader(f"📈 Vital Signs: {p_name}")
             else:
                 st.subheader("📈 Vital Signs Trends")
 
         if current_id:
-            # Lấy dữ liệu
             vitals_df = get_patient_vitals(current_id, time_range)
             
             if not vitals_df.empty:
                 # Plot vitals
                 fig = go.Figure()
                 
-                # Heart Rate (Trục trái)
                 fig.add_trace(go.Scatter(
                     x=vitals_df['timestamp'],
                     y=vitals_df['heart_rate'],
@@ -378,7 +404,6 @@ def main():
                     mode='lines+markers'
                 ))
                 
-                # SpO2 (Trục phải)
                 fig.add_trace(go.Scatter(
                     x=vitals_df['timestamp'],
                     y=vitals_df['spo2'],
@@ -405,20 +430,20 @@ def main():
                     height=450,
                     margin=dict(l=20, r=20, t=30, b=20),
                     legend=dict(orientation="h", y=1.1),
-                    hovermode="x unified" # Hiệu ứng hover đẹp hơn
+                    hovermode="x unified"
                 )
                 
-                st.plotly_chart(fig, use_container_width=True)
+                # ✅ FIX: Thay use_container_width=True → width='stretch'
+                st.plotly_chart(fig, width='stretch')
                 
                 # Bảng dữ liệu chi tiết
                 with st.expander("📋 View Raw Data History"):
-                    # Sắp xếp mới nhất lên đầu
+                    # ✅ FIX: Thay use_container_width=True → width='stretch'
                     st.dataframe(
                         vitals_df.sort_values(by='timestamp', ascending=False), 
-                        use_container_width=True
+                        width='stretch'
                     )
             else:
-                # Thông báo đẹp hơn khi không có data
                 st.warning(f"⚠️ No vital signs data stream available for **{p_name}** ({current_id}) yet.")
                 st.info("💡 Tip: Check if the Simulator/Replayer is running.")
         else:
@@ -434,7 +459,6 @@ def main():
                 alert_color = "red" if patient['risk_level'] == 'CRITICAL' else "orange"
                 alert_icon = "🔴" if patient['risk_level'] == 'CRITICAL' else "🟠"
                 
-                # Highlight card
                 st.markdown(f"""
                 <div style="padding: 1rem; border: 2px solid {alert_color}; border-radius: 10px; margin-bottom: 1rem;">
                     <h3>{alert_icon} {patient['risk_level']} - {patient['full_name']}</h3>

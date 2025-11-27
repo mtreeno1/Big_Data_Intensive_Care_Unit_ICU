@@ -218,3 +218,61 @@ class FaultTolerantConsumer(VitalSignsConsumer):
             process_callback=retry_wrapper,
             max_messages=max_messages
         )
+
+
+
+def handle_message(self, message):
+    """Process incoming Kafka message"""
+    try:
+        data = message.value
+        patient_id = data.get('patient_id')
+        vital_signs = data.get('vital_signs', {})
+        
+        # Process and calculate risk
+        result = self.processor.process_vital_signs(vital_signs)
+        risk_score = result.get('risk_score', 0)
+        risk_level = result.get('risk_level', 'STABLE')
+        anomalies = result.get('anomalies', [])
+        
+        # Store in databases
+        self.influx_manager.write_vital_signs(
+            patient_id=patient_id,
+            data=vital_signs,
+            tags={'risk_level': risk_level}
+        )
+        
+        self.db_manager.update_patient_risk(patient_id, risk_score, risk_level)
+        
+        # ✅ THAY ĐỔI: Gửi alert cho MODERATE, HIGH, CRITICAL
+        if risk_level in ['MODERATE', 'HIGH', 'CRITICAL']:
+            alert_data = {
+                'patient_id': patient_id,
+                'patient_name': f"Patient {patient_id.split('-')[1]}",
+                'risk_level': risk_level,
+                'risk_score': risk_score,
+                'timestamp': datetime.now().isoformat(),
+                'alert_reason': anomalies[0] if anomalies else 'Risk threshold exceeded',
+                'vital_signs': {
+                    'heart_rate': vital_signs.get('heart_rate'),
+                    'spo2': vital_signs.get('spo2'),
+                    'temperature': vital_signs.get('temperature'),
+                    'blood_pressure': f"{vital_signs.get('blood_pressure', {}).get('systolic')}/{vital_signs.get('blood_pressure', {}).get('diastolic')}"
+                }
+            }
+            
+            self.producer.send('patient-alerts', value=alert_data)
+            
+            if risk_level == 'CRITICAL':
+                self.logger.error(f"🔴 CRITICAL ALERT for {patient_id}: {alert_data['alert_reason']}")
+            elif risk_level == 'HIGH':
+                self.logger.warning(f"🟠 HIGH ALERT for {patient_id}: {alert_data['alert_reason']}")
+            else:
+                self.logger.info(f"🟡 MODERATE ALERT for {patient_id}: {alert_data['alert_reason']}")
+        
+        self.processed_count += 1
+        
+        if self.processed_count % 100 == 0:
+            self.logger.info(f"✅ Processed: {self.processed_count} messages")
+            
+    except Exception as e:
+        self.logger.error(f"❌ Error processing message: {e}")

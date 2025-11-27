@@ -28,7 +28,8 @@ def generate_patient_data(row, idx):
         'gender': str(row['sex']).upper() if pd.notna(row['sex']) and str(row['sex']).upper() in ['M', 'F'] else 'M',
         'blood_type': random.choice(['A+', 'B+', 'O+', 'AB+', 'A-', 'B-', 'O-', 'AB-']),
         'device_id': f"MON-{caseid:04d}",
-        'chronic_conditions': row['dx'] if pd.notna(row['dx']) else 'Unknown'
+        'chronic_conditions': row['dx'] if pd.notna(row['dx']) else 'Unknown',
+        'active_monitoring': True  # ✅ THÊM DÒNG NÀY
     }
     
     # Admission data
@@ -38,7 +39,9 @@ def generate_patient_data(row, idx):
         'admission_type': 'Emergency' if row.get('emop', 0) == 1 else 'Elective',
         'department': row['department'] if pd.notna(row.get('department')) else 'ICU',
         'initial_diagnosis': row['dx'] if pd.notna(row.get('dx')) else 'Unknown',
-        'attending_physician': f"Dr. {random.choice(['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis'])}"
+        'attending_physician': f"Dr. {random.choice(['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis'])}",
+        'discharge_time': None,  # ✅ THÊM DÒNG NÀY - Chưa discharge
+        'status': 'ACTIVE'       # ✅ THÊM DÒNG NÀY
     }
     
     # Calculate risk level based on ASA and other factors

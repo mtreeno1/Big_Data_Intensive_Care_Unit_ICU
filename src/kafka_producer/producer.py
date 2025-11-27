@@ -148,6 +148,8 @@ class VitalSignsProducer:
             logger.info("✅ Kafka Producer closed successfully")
         except Exception as e:
             logger.error(f"❌ Error closing producer: {e}")
+    
+    
 
 
 # Test

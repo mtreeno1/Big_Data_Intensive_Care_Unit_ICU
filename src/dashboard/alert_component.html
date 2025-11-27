@@ -2,514 +2,503 @@
 <html>
 <head>
     <meta charset="UTF-8">
+    <title>ICU Alert System</title>
     <style>
-        /* Alert Popup Modal */
-        .alert-modal {
-            display: none;
-            position: fixed;
-            z-index: 9999;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.7);
-            animation: fadeIn 0.3s;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
-            20%, 40%, 60%, 80% { transform: translateX(10px); }
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
-        .alert-content {
-            background-color: white;
-            margin: 5% auto;
+        body {
+            margin: 0;
             padding: 0;
-            border-radius: 15px;
-            width: 80%;
-            max-width: 600px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-            animation: shake 0.5s, pulse 1s infinite;
-            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
-        .alert-header {
+        /* Alert Container */
+        #alert-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        /* Alert Box */
+        .alert-box {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            margin-bottom: 15px;
             padding: 20px;
-            color: white;
-            font-weight: bold;
-            font-size: 24px;
+            animation: slideIn 0.3s ease-out;
+            border-left: 6px solid;
+        }
+
+        .alert-box.critical {
+            border-left-color: #E74C3C;
+            background: linear-gradient(to right, rgba(231, 76, 60, 0.1), white);
+        }
+
+        .alert-box.high {
+            border-left-color: #F39C12;
+            background: linear-gradient(to right, rgba(243, 156, 18, 0.1), white);
+        }
+
+        .alert-box.moderate {
+            border-left-color: #F1C40F;
+            background: linear-gradient(to right, rgba(241, 196, 15, 0.1), white);
+        }
+
+        /* Alert Header */
+        .alert-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 10px;
         }
 
-        .alert-header.CRITICAL {
-            background: linear-gradient(135deg, #ff0000, #cc0000);
-        }
-
-        .alert-header.HIGH {
-            background: linear-gradient(135deg, #ff6600, #cc5200);
-        }
-
-        .alert-header.MODERATE {
-            background: linear-gradient(135deg, #ffaa00, #cc8800);
-        }
-
-        .alert-body {
-            padding: 25px;
-            font-size: 16px;
-            line-height: 1.8;
-        }
-
-        .patient-info {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 5px solid #007bff;
-        }
-
-        .vital-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin: 20px 0;
-        }
-
-        .vital-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-
-        .vital-label {
-            font-size: 12px;
-            opacity: 0.9;
-            margin-bottom: 5px;
-        }
-
-        .vital-value {
-            font-size: 28px;
+        .alert-title {
+            font-size: 18px;
             font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
-        .warning-list {
-            background-color: #fff3cd;
-            border-left: 5px solid #ffc107;
-            padding: 15px;
-            border-radius: 5px;
+        .alert-icon {
+            font-size: 24px;
+            animation: pulse 1s infinite;
+        }
+
+        .alert-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #888;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .alert-close:hover {
+            background: rgba(0,0,0,0.1);
+            color: #333;
+        }
+
+        /* Alert Body */
+        .alert-body {
             margin: 15px 0;
         }
 
-        .warning-item {
-            margin: 8px 0;
-            font-size: 14px;
-        }
-
-        .close-btn {
-            background-color: #dc3545;
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            font-size: 16px;
-            border-radius: 8px;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 20px;
+        .patient-id {
+            font-size: 20px;
             font-weight: bold;
-            transition: all 0.3s;
+            color: #2C3E50;
+            margin-bottom: 10px;
         }
 
-        .close-btn:hover {
-            background-color: #c82333;
-            transform: scale(1.05);
+        .alert-message {
+            color: #555;
+            line-height: 1.6;
+            margin-bottom: 10px;
         }
 
-        .ack-btn {
-            background-color: #28a745;
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            font-size: 16px;
+        .vital-readings {
+            background: rgba(0,0,0,0.05);
+            padding: 12px;
             border-radius: 8px;
-            cursor: pointer;
-            width: 100%;
             margin-top: 10px;
+        }
+
+        .vital-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .vital-item:last-child {
+            border-bottom: none;
+        }
+
+        .vital-label {
+            font-weight: 600;
+            color: #666;
+        }
+
+        .vital-value {
+            font-family: 'Courier New', monospace;
             font-weight: bold;
-            transition: all 0.3s;
         }
 
-        .ack-btn:hover {
-            background-color: #218838;
-            transform: scale(1.05);
+        .vital-value.danger {
+            color: #E74C3C;
         }
 
-        /* Connection Status Indicator */
-        .ws-status {
+        /* Alert Footer */
+        .alert-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .alert-time {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .alert-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .alert-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .alert-btn.acknowledge {
+            background: #3498DB;
+            color: white;
+        }
+
+        .alert-btn.acknowledge:hover {
+            background: #2980B9;
+        }
+
+        .alert-btn.view {
+            background: #95A5A6;
+            color: white;
+        }
+
+        .alert-btn.view:hover {
+            background: #7F8C8D;
+        }
+
+        /* Connection Status */
+        #connection-status {
             position: fixed;
             bottom: 20px;
             right: 20px;
             padding: 10px 20px;
-            border-radius: 25px;
-            font-size: 12px;
-            font-weight: bold;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            z-index: 1000;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
 
-        .ws-connected {
-            background-color: #28a745;
+        #connection-status.connected {
+            background: #27AE60;
             color: white;
         }
 
-        .ws-disconnected {
-            background-color: #dc3545;
+        #connection-status.disconnected {
+            background: #E74C3C;
             color: white;
         }
 
-        .ws-connecting {
-            background-color: #ffc107;
-            color: black;
+        #connection-status.connecting {
+            background: #F39C12;
+            color: white;
         }
 
-        /* Alert Counter Badge */
-        .alert-counter {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background-color: #dc3545;
-            color: white;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: bold;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-            z-index: 1000;
-            animation: pulse 1s infinite;
+        /* Animations */
+        @keyframes slideIn {
+            from {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.2);
+            }
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        .shake {
+            animation: shake 0.5s;
         }
     </style>
 </head>
 <body>
-    <!-- Alert Modal -->
-    <div id="alertModal" class="alert-modal">
-        <div class="alert-content">
-            <div id="alertHeader" class="alert-header">
-                <span id="alertTitle">🚨 CRITICAL ALERT</span>
-                <span id="alertTime"></span>
-            </div>
-            <div class="alert-body">
-                <div class="patient-info">
-                    <h3 style="margin-top: 0;">👤 <span id="patientName"></span></h3>
-                    <p style="margin: 5px 0;"><strong>ID:</strong> <span id="patientId"></span></p>
-                    <p style="margin: 5px 0;"><strong>Risk Score:</strong> <span id="riskScore"></span> | <strong>MEWS:</strong> <span id="mewsScore"></span></p>
-                </div>
-
-                <h4>📊 Current Vital Signs:</h4>
-                <div class="vital-grid" id="vitalGrid"></div>
-
-                <div id="warningsContainer"></div>
-
-                <button class="ack-btn" onclick="acknowledgeAlert()">✅ Acknowledge & Close</button>
-                <button class="close-btn" onclick="closeAlert()">❌ Close</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Connection Status -->
-    <div id="wsStatus" class="ws-status ws-connecting">🔄 Connecting...</div>
-
-    <!-- Alert Counter -->
-    <div id="alertCounter" class="alert-counter" style="display: none;">0</div>
-
-    <!-- Audio Elements -->
-    <audio id="criticalAlarm" loop>
-        <source src="https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3" type="audio/mpeg">
-    </audio>
-    <audio id="warningBeep">
-        <source src="https://www.soundjay.com/button/sounds/beep-07.mp3" type="audio/mpeg">
-    </audio>
-    <audio id="notification">
-        <source src="https://www.soundjay.com/button/sounds/beep-09.mp3" type="audio/mpeg">
-    </audio>
+    <div id="alert-container"></div>
+    <div id="connection-status" class="connecting">⚡ Connecting...</div>
 
     <script>
+        // WebSocket connection
         let ws = null;
-        let reconnectInterval = null;
-        let alertCount = 0;
-        let currentAlertId = null;
-        let audioPlaying = null;
+        let reconnectTimer = null;
+        const WS_URL = 'ws://localhost:8765/ws/alerts';
+        const statusEl = document.getElementById('connection-status');
+        const containerEl = document.getElementById('alert-container');
 
-        // WebSocket Configuration
-        const WS_URL = 'ws://localhost:8001/ws/alerts';
-        const RECONNECT_DELAY = 3000; // 3 seconds
+        // Alert sound generation (beep beep)
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playAlertSound(severity) {
+            // Create oscillator (beep sound)
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            // Frequency based on severity
+            const frequencies = {
+                'CRITICAL': 880,  // A5 - High pitch
+                'HIGH': 659,      // E5 - Medium pitch
+                'MODERATE': 523   // C5 - Lower pitch
+            };
+            
+            oscillator.frequency.value = frequencies[severity] || 659;
+            oscillator.type = 'sine';
+            
+            // Envelope
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.3, now + 0.01);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            
+            oscillator.start(now);
+            oscillator.stop(now + 0.2);
+            
+            // Double beep for CRITICAL
+            if (severity === 'CRITICAL') {
+                setTimeout(() => {
+                    const osc2 = audioContext.createOscillator();
+                    const gain2 = audioContext.createGain();
+                    osc2.connect(gain2);
+                    gain2.connect(audioContext.destination);
+                    osc2.frequency.value = 880;
+                    osc2.type = 'sine';
+                    
+                    const now2 = audioContext.currentTime;
+                    gain2.gain.setValueAtTime(0, now2);
+                    gain2.gain.linearRampToValueAtTime(0.3, now2 + 0.01);
+                    gain2.gain.exponentialRampToValueAtTime(0.01, now2 + 0.2);
+                    
+                    osc2.start(now2);
+                    osc2.stop(now2 + 0.2);
+                }, 300);
+            }
+        }
 
-        // Initialize WebSocket Connection
         function connectWebSocket() {
-            updateStatus('connecting');
+            statusEl.className = 'connecting';
+            statusEl.textContent = '⚡ Connecting...';
             
             ws = new WebSocket(WS_URL);
-
+            
             ws.onopen = () => {
                 console.log('✅ WebSocket connected');
-                updateStatus('connected');
-                clearInterval(reconnectInterval);
+                statusEl.className = 'connected';
+                statusEl.textContent = '🟢 Connected';
+                
+                // Send ping every 30s
+                setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send('ping');
+                    }
+                }, 30000);
             };
-
+            
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                console.log('📨 Received:', data);
-
-                if (data.type === 'alert') {
-                    handleAlert(data.data);
-                } else if (data.type === 'alert_history') {
-                    console.log(`📚 Received ${data.count} historical alerts`);
-                } else if (data.type === 'heartbeat') {
-                    console.log('💓 Heartbeat received');
+                const message = JSON.parse(event.data);
+                
+                if (message.type === 'alert') {
+                    handleAlert(message.data);
+                } else if (message.type === 'history') {
+                    // Load historical alerts
+                    message.alerts.forEach(alert => {
+                        displayAlert(alert, false); // Don't play sound for history
+                    });
                 }
             };
-
+            
             ws.onerror = (error) => {
                 console.error('❌ WebSocket error:', error);
-                updateStatus('disconnected');
             };
-
+            
             ws.onclose = () => {
                 console.log('❌ WebSocket disconnected');
-                updateStatus('disconnected');
+                statusEl.className = 'disconnected';
+                statusEl.textContent = '🔴 Disconnected';
                 
-                // Auto-reconnect
-                reconnectInterval = setInterval(() => {
-                    console.log('🔄 Attempting to reconnect...');
-                    connectWebSocket();
-                }, RECONNECT_DELAY);
+                // Reconnect after 5 seconds
+                reconnectTimer = setTimeout(connectWebSocket, 5000);
             };
         }
 
-        // Handle Alert
-        function handleAlert(alert) {
-            console.log('🚨 Alert received:', alert);
+        function handleAlert(alertData) {
+            console.log('🚨 New alert:', alertData);
             
-            // Update counter
-            alertCount++;
-            document.getElementById('alertCounter').textContent = alertCount;
-            document.getElementById('alertCounter').style.display = 'flex';
-
-            // Play sound based on priority
-            playAlertSound(alert.priority);
-
-            // Show popup modal
-            showAlertModal(alert);
-
-            // Store current alert ID for acknowledgment
-            currentAlertId = alert.alert_id;
-        }
-
-        // Play Alert Sound
-        function playAlertSound(priority) {
-            // Stop any currently playing audio
-            if (audioPlaying) {
-                audioPlaying.pause();
-                audioPlaying.currentTime = 0;
-            }
-
-            let audio;
-            let repeatCount = 1;
-
-            if (priority === 1) { // CRITICAL
-                audio = document.getElementById('criticalAlarm');
-                audio.volume = 1.0;
-                audio.loop = true; // Keep playing until acknowledged
-            } else if (priority === 2) { // HIGH
-                audio = document.getElementById('warningBeep');
-                audio.volume = 0.8;
-                repeatCount = 2;
-            } else { // MODERATE
-                audio = document.getElementById('notification');
-                audio.volume = 0.6;
-                repeatCount = 1;
-            }
-
-            audioPlaying = audio;
+            // Play sound
+            playAlertSound(alertData.severity);
             
-            // Play audio
-            audio.play().catch(err => {
-                console.error('🔇 Audio play failed:', err);
-                // Browser might block autoplay, show notification instead
-                showBrowserNotification(alert);
-            });
-
-            // For non-looping sounds, stop after repeats
-            if (!audio.loop && repeatCount > 1) {
-                let playCount = 0;
-                audio.addEventListener('ended', function playAgain() {
-                    playCount++;
-                    if (playCount < repeatCount) {
-                        audio.currentTime = 0;
-                        audio.play();
-                    } else {
-                        audio.removeEventListener('ended', playAgain);
-                    }
-                });
-            }
-        }
-
-        // Show Alert Modal
-        function showAlertModal(alert) {
-            const modal = document.getElementById('alertModal');
-            const header = document.getElementById('alertHeader');
+            // Display alert
+            displayAlert(alertData, true);
             
-            // Set header color based on risk level
-            header.className = `alert-header ${alert.risk_level}`;
-            
-            // Populate data
-            document.getElementById('alertTitle').textContent = `🚨 ${alert.risk_level} ALERT`;
-            document.getElementById('alertTime').textContent = new Date(alert.timestamp).toLocaleTimeString();
-            document.getElementById('patientName').textContent = alert.patient_name;
-            document.getElementById('patientId').textContent = alert.patient_id;
-            document.getElementById('riskScore').textContent = alert.risk_score.toFixed(1);
-            document.getElementById('mewsScore').textContent = alert.mews_score;
-
-            // Render vital signs
-            const vitalGrid = document.getElementById('vitalGrid');
-            vitalGrid.innerHTML = '';
-            
-            const vitals = alert.vital_signs;
-            const vitalItems = [
-                { icon: '❤️', label: 'Heart Rate', value: vitals.heart_rate, unit: 'bpm' },
-                { icon: '🫁', label: 'SpO₂', value: vitals.spo2, unit: '%' },
-                { icon: '🌡️', label: 'Temperature', value: vitals.temperature, unit: '°C' },
-                { icon: '💨', label: 'Resp Rate', value: vitals.respiratory_rate, unit: '/min' }
-            ];
-
-            vitalItems.forEach(item => {
-                const card = document.createElement('div');
-                card.className = 'vital-card';
-                card.innerHTML = `
-                    <div class="vital-label">${item.icon} ${item.label}</div>
-                    <div class="vital-value">${item.value} <small>${item.unit}</small></div>
-                `;
-                vitalGrid.appendChild(card);
-            });
-
-            // Add blood pressure if available
-            if (vitals.blood_pressure_systolic) {
-                const bpCard = document.createElement('div');
-                bpCard.className = 'vital-card';
-                bpCard.style.gridColumn = 'span 2';
-                bpCard.innerHTML = `
-                    <div class="vital-label">🩸 Blood Pressure</div>
-                    <div class="vital-value">${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic} <small>mmHg</small></div>
-                `;
-                vitalGrid.appendChild(bpCard);
-            }
-
-            // Render warnings
-            const warningsContainer = document.getElementById('warningsContainer');
-            if (alert.warnings && alert.warnings.length > 0) {
-                warningsContainer.innerHTML = `
-                    <div class="warning-list">
-                        <h4 style="margin-top: 0;">⚠️ Clinical Warnings:</h4>
-                        ${alert.warnings.map(w => `<div class="warning-item">• ${w}</div>`).join('')}
-                    </div>
-                `;
-            } else {
-                warningsContainer.innerHTML = '';
-            }
-
-            // Show modal
-            modal.style.display = 'block';
-
-            // Request browser notification permission
-            if (Notification.permission !== 'granted') {
-                Notification.requestPermission();
-            }
-        }
-
-        // Close Alert Modal
-        function closeAlert() {
-            document.getElementById('alertModal').style.display = 'none';
-            stopAudio();
-        }
-
-        // Acknowledge Alert (send to server)
-        function acknowledgeAlert() {
-            if (ws && ws.readyState === WebSocket.OPEN && currentAlertId) {
-                ws.send(JSON.stringify({
-                    type: 'ack',
-                    alert_id: currentAlertId,
-                    acknowledged_at: new Date().toISOString()
-                }));
-                console.log('✅ Alert acknowledged:', currentAlertId);
-            }
-            closeAlert();
-        }
-
-        // Stop Audio
-        function stopAudio() {
-            if (audioPlaying) {
-                audioPlaying.pause();
-                audioPlaying.currentTime = 0;
-                audioPlaying.loop = false;
-                audioPlaying = null;
-            }
-        }
-
-        // Update Connection Status
-        function updateStatus(status) {
-            const statusEl = document.getElementById('wsStatus');
-            statusEl.className = 'ws-status';
-
-            if (status === 'connected') {
-                statusEl.classList.add('ws-connected');
-                statusEl.textContent = '✅ Connected';
-            } else if (status === 'disconnected') {
-                statusEl.classList.add('ws-disconnected');
-                statusEl.textContent = '❌ Disconnected';
-            } else {
-                statusEl.classList.add('ws-connecting');
-                statusEl.textContent = '🔄 Connecting...';
-            }
-        }
-
-        // Browser Notification (fallback)
-        function showBrowserNotification(alert) {
+            // Browser notification
             if (Notification.permission === 'granted') {
-                new Notification(`${alert.risk_level} Alert - ${alert.patient_name}`, {
-                    body: `Risk Score: ${alert.risk_score.toFixed(1)} | MEWS: ${alert.mews_score}`,
+                new Notification('🚨 ICU Alert', {
+                    body: `${alertData.patient_id}: ${alertData.alert_type}`,
                     icon: '🚨',
-                    requireInteraction: true // Stay until user interacts
+                    tag: alertData.patient_id,
+                    requireInteraction: alertData.severity === 'CRITICAL'
                 });
             }
         }
 
-        // Initialize on load
+        function displayAlert(alertData, animate = true) {
+            const alertBox = document.createElement('div');
+            alertBox.className = `alert-box ${alertData.risk_level.toLowerCase()}${animate ? ' shake' : ''}`;
+            alertBox.id = `alert-${Date.now()}`;
+            
+            // Severity icons
+            const icons = {
+                'CRITICAL': '🚨',
+                'HIGH': '⚠️',
+                'MODERATE': '⚡'
+            };
+            
+            const vitals = alertData.vital_signs || {};
+            
+            alertBox.innerHTML = `
+                <div class="alert-header">
+                    <div class="alert-title">
+                        <span class="alert-icon">${icons[alertData.severity] || '⚠️'}</span>
+                        <span>${alertData.severity} ALERT</span>
+                    </div>
+                    <button class="alert-close" onclick="dismissAlert('${alertBox.id}')">×</button>
+                </div>
+                
+                <div class="alert-body">
+                    <div class="patient-id">${alertData.patient_id}</div>
+                    <div class="alert-message">${alertData.alert_type || 'Critical vital signs detected'}</div>
+                    
+                    ${Object.keys(vitals).length > 0 ? `
+                        <div class="vital-readings">
+                            ${vitals.heart_rate ? `
+                                <div class="vital-item">
+                                    <span class="vital-label">💓 Heart Rate:</span>
+                                    <span class="vital-value ${(vitals.heart_rate < 50 || vitals.heart_rate > 120) ? 'danger' : ''}">${vitals.heart_rate.toFixed(0)} bpm</span>
+                                </div>
+                            ` : ''}
+                            ${vitals.spo2 ? `
+                                <div class="vital-item">
+                                    <span class="vital-label">🫁 SpO2:</span>
+                                    <span class="vital-value ${vitals.spo2 < 90 ? 'danger' : ''}">${vitals.spo2.toFixed(1)}%</span>
+                                </div>
+                            ` : ''}
+                            ${vitals.temperature ? `
+                                <div class="vital-item">
+                                    <span class="vital-label">🌡️ Temperature:</span>
+                                    <span class="vital-value ${(vitals.temperature < 36 || vitals.temperature > 38) ? 'danger' : ''}">${vitals.temperature.toFixed(1)}°C</span>
+                                </div>
+                            ` : ''}
+                            ${vitals.blood_pressure_systolic ? `
+                                <div class="vital-item">
+                                    <span class="vital-label">🫀 Blood Pressure:</span>
+                                    <span class="vital-value ${(vitals.blood_pressure_systolic < 90 || vitals.blood_pressure_systolic > 180) ? 'danger' : ''}">${vitals.blood_pressure_systolic.toFixed(0)}/${vitals.blood_pressure_diastolic?.toFixed(0) || '--'} mmHg</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div class="alert-footer">
+                    <span class="alert-time">${new Date(alertData.timestamp).toLocaleTimeString()}</span>
+                    <div class="alert-actions">
+                        <button class="alert-btn acknowledge" onclick="acknowledgeAlert('${alertData.patient_id}', '${alertBox.id}')">Acknowledge</button>
+                        <button class="alert-btn view" onclick="viewPatient('${alertData.patient_id}')">View Patient</button>
+                    </div>
+                </div>
+            `;
+            
+            containerEl.insertBefore(alertBox, containerEl.firstChild);
+            
+            // Auto-dismiss after 60 seconds for non-critical
+            if (alertData.severity !== 'CRITICAL') {
+                setTimeout(() => {
+                    dismissAlert(alertBox.id);
+                }, 60000);
+            }
+        }
+
+        function dismissAlert(alertId) {
+            const alertBox = document.getElementById(alertId);
+            if (alertBox) {
+                alertBox.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => alertBox.remove(), 300);
+            }
+        }
+
+        function acknowledgeAlert(patientId, alertId) {
+            console.log(`✅ Alert acknowledged for ${patientId}`);
+            dismissAlert(alertId);
+            
+            // Send acknowledgment to server (optional)
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'acknowledge',
+                    patient_id: patientId,
+                    timestamp: new Date().toISOString()
+                }));
+            }
+        }
+
+        function viewPatient(patientId) {
+            console.log(`👁️ Viewing patient ${patientId}`);
+            // Send message to Streamlit to switch to patient
+            window.parent.postMessage({
+                type: 'view_patient',
+                patient_id: patientId
+            }, '*');
+        }
+
+        // Request notification permission
+        if (Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        // Connect on load
         connectWebSocket();
 
-        // Close modal when clicking outside
-        window.onclick = (event) => {
-            const modal = document.getElementById('alertModal');
-            if (event.target === modal) {
-                closeAlert();
+        // Cleanup on unload
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
             }
-        };
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+            }
+        });
     </script>
 </body>
 </html>

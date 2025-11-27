@@ -60,11 +60,11 @@ critical_df = get_critical_patients()
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    critical_count = len(critical_df[critical_df['risk_level'] == 'CRITICAL'])
+    critical_count = len(critical_df[critical_df['risk_level'] == 'CRITICAL']) if not critical_df.empty else 0
     st.metric("🔴 Critical Patients", critical_count)
 
 with col2:
-    high_count = len(critical_df[critical_df['risk_level'] == 'HIGH'])
+    high_count = len(critical_df[critical_df['risk_level'] == 'HIGH']) if not critical_df.empty else 0
     st.metric("🟠 High Risk Patients", high_count)
 
 with col3:
