@@ -10,13 +10,21 @@ from kafka import KafkaProducer
 # CẤU HÌNH
 KAFKA_SERVER = 'localhost:9092'
 KAFKA_TOPIC = 'patient-vital-signs'
-SPEED_FACTOR = 10  # Chạy nhanh x20 lần để thấy data lẹ hơn
+SPEED_FACTOR = 10  
 
 # Danh sách bệnh nhân
 TARGET_CASES = {
-    1986: "ICU-001986",  # Khớp với Patient 1986
-    4647: "ICU-004647",  # Khớp với Patient 4647
-    6066: "ICU-006066"   # Khớp với Patient 6066
+    3962: "ICU-003962",  
+    1926: "ICU-001926", 
+    5175: "ICU-005175", 
+    5603: "ICU-005603",
+    1835: "ICU-001835",
+    5262: "ICU-005262",
+    4009: "ICU-004009",
+    4744: "ICU-004744",
+    4898: "ICU-004898",
+    5753: "ICU-005753",
+    1229: "ICU-001229" 
 }
 
 # Mapping

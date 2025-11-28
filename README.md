@@ -2,6 +2,11 @@
 
 ## Big Data Healthcare Analytics Project
 
+## 👥 Contributors
+
+Luong Minh Tri
+Ngo Quang Dung
+
 ### 🎯 Project Overview
 
 A **production-ready** real-time patient monitoring system using big data technologies to process vital signs from VitalDB dataset, detect critical conditions using MEWS scoring, and **actively alert** medical staff through WebSocket-based notifications with audio and browser alerts.
@@ -76,50 +81,6 @@ Vital Signs → Kafka → MEWS Scorer → Alert (if HIGH/CRITICAL)
 - Temperature
 - Respiratory Rate
 
-### 📁 Project Structure
-
-```
-ICU/
-├── data/                      # Data storage and samples
-│   ├── raw/                   # Raw VitalDB data
-│   ├── processed/             # Processed time-series
-│   ├── icu_like_cases.csv     # Filtered 3,359 ICU cases
-│   ├── patients.csv           # Patient metadata
-│   └── clinical_data.csv      # Clinical parameters
-├── src/
-│   ├── data_generation/       # Patient vital signs simulator
-│   ├── kafka_producer/        # Kafka producer (50 patients)
-│   ├── kafka_consumer/        # Full E.T.L.A pipeline
-│   ├── stream_processing/     # MEWS risk scorer + validator
-│   ├── ml_models/             # Risk scoring algorithms
-│   ├── alerting/              # 🆕 WebSocket alert server
-│   ├── storage/               # InfluxDB + PostgreSQL managers
-│   ├── database/              # SQLAlchemy models
-│   ├── api/                   # REST API (future)
-│   └── dashboard/             # Streamlit dashboard + alert component
-├── scripts/                   # Operational scripts
-│   ├── run_producer.py        # Start Kafka producer
-│   ├── run_consumer.py        # Start consumer pipeline
-│   ├── run_alert_server.py    # 🆕 Start WebSocket server
-│   ├── test_alerts.py         # 🆕 Test alert system
-│   ├── setup_alert_system.sh  # 🆕 One-command startup
-│   └── stop_alert_system.sh   # 🆕 One-command shutdown
-├── docs/                      # Documentation
-│   ├── ACTIVE_ALERTING.md     # 🆕 Active alerting guide
-│   ├── ARCHITECTURE.md        # System architecture
-│   ├── DATA_SOURCES.md        # VitalDB dataset guide
-│   └── QUICKSTART.md          # Quick start guide
-├── notebooks/                 # Analysis notebooks
-├── tests/                     # Unit and integration tests
-├── config/                    # Configuration management
-├── docker-compose.yml         # Docker orchestration
-└── requirements.txt           # Python dependencies
-```
-
----
-
-## 🚀 Quick Start
-
 ### Prerequisites
 
 - Python 3.12+
@@ -144,33 +105,43 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-### Launch System (One Command) 🎬
+### Launch System 🎬
 
-```bash
-# Activate virtual environment first
+# 1. Kích hoạt môi trường ảo (Nếu chưa)
+
 source venv/bin/activate
 
-# Start everything
-./scripts/setup_alert_system.sh
-```
+# 2. Khởi động Hạ tầng (Docker Containers: Kafka, Postgres, InfluxDB...)
+
+# Đợi khoảng 15-30s để các container khởi động hoàn toàn
+
+# 3. Làm sạch & Khởi tạo dữ liệu nền (Làm 1 lần)
+
+# Xóa dữ liệu cũ để tránh xung đột ID
+
+python scripts/reset_database.py
+
+# 4. Nạp hồ sơ bệnh nhân (Metadata) bắt đầu streaming
+
+# hoặc tùy chọn bệnh nhân theo hướng muốn streaming ở folder data
+
+python scripts/run_vitaldb_replayer.py
+
+# 5. Chạy consumer để thu thập dữ liệu từ kafka
+
+python scripts/run_consumer.py
+
+# 6. Hiển thị giao diện
+
+streamlit run src/dashboard/streamlit_app.py
 
 ### Access Dashboard
 
 Open browser: **http://localhost:8501**
 
-### Test Alerts
-
-```bash
-python scripts/test_alerts.py
-```
-
 ### Stop System
 
-```bash
-./scripts/stop_alert_system.sh
-```
-
----
+docker compose down
 
 ## 📚 Features
 
@@ -183,52 +154,13 @@ python scripts/test_alerts.py
 - Multi-axis dashboard
 - Search & filter patients
 
-### 🔄 In Progress
-
-- Alert escalation
-- Historical analysis
-
-### ⏳ Planned
-
-- Telegram/Slack integration
-- SMS notifications
-- Mobile app
-
----
-
-## 📖 Documentation
-
-- **[ACTIVE_ALERTING.md](docs/ACTIVE_ALERTING.md)**: WebSocket alerting guide
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)**: System design
-- **[DATA_SOURCES.md](docs/DATA_SOURCES.md)**: VitalDB documentation
-
----
-
-## 🐛 Troubleshooting
-
-See [ACTIVE_ALERTING.md](docs/ACTIVE_ALERTING.md#troubleshooting)
-
----
-
 ## 📜 License
 
 MIT License
 
 ---
 
-## 👥 Contributors
-
-- Big Data Healthcare Analytics Project
-- University of Engineering and Technology (UET)
-- 2024
-
 ---
-
-**Status**: Production Ready ✅
-
-### License
-
-MIT License
 
 ```
 

@@ -18,6 +18,7 @@ from config.config import settings
 from src.database.session import SessionLocal
 from src.database.models import Patient, Admission
 
+
 # Page config
 st.set_page_config(
     page_title="ICU Monitoring Dashboard",
@@ -393,6 +394,66 @@ def main():
             vitals_df = get_patient_vitals(current_id, time_range)
             
             if not vitals_df.empty:
+
+                from plotly.subplots import make_subplots
+                
+                # Tạo khung 4 biểu đồ xếp chồng lên nhau
+                fig = make_subplots(
+                    rows=4, cols=1,
+                    shared_xaxes=True, # Dùng chung trục thời gian
+                    vertical_spacing=0.05,
+                    subplot_titles=("Heart Rate & SpO2", "Blood Pressure", "Respiratory Rate", "Temperature")
+                )
+
+                # 1. Biểu đồ Tim & SpO2 (Kết hợp 2 trục y)
+                fig.add_trace(go.Scatter(
+                    x=vitals_df['timestamp'], y=vitals_df['heart_rate'],
+                    name='Heart Rate', line=dict(color='#ff2b2b', width=2)
+                ), row=1, col=1)
+                
+                fig.add_trace(go.Scatter(
+                    x=vitals_df['timestamp'], y=vitals_df['spo2'],
+                    name='SpO2', line=dict(color='#00f2ff', width=2),
+                    yaxis="y2" # Trục phụ
+                ), row=1, col=1)
+
+                # 2. Biểu đồ Huyết áp (Vẽ vùng giữa Sys và Dia)
+                fig.add_trace(go.Scatter(
+                    x=vitals_df['timestamp'], y=vitals_df['bp_systolic'],
+                    name='Systolic BP', line=dict(color='#ff9900', width=2)
+                ), row=2, col=1)
+                
+                fig.add_trace(go.Scatter(
+                    x=vitals_df['timestamp'], y=vitals_df['bp_diastolic'],
+                    name='Diastolic BP', line=dict(color='#ffcc00', width=2),
+                    fill='tonexty' # Tô màu vùng giữa 2 đường huyết áp
+                ), row=2, col=1)
+
+                # 3. Biểu đồ Nhịp thở
+                fig.add_trace(go.Scatter(
+                    x=vitals_df['timestamp'], y=vitals_df['respiratory_rate'],
+                    name='Resp Rate', line=dict(color='#00cc44', width=2)
+                ), row=3, col=1)
+
+                # 4. Biểu đồ Nhiệt độ
+                fig.add_trace(go.Scatter(
+                    x=vitals_df['timestamp'], y=vitals_df['temperature'],
+                    name='Temperature', line=dict(color='#ff66cc', width=2)
+                ), row=4, col=1)
+
+                # Cấu hình Layout
+                fig.update_layout(
+                    height=900, # Tăng chiều cao để chứa 4 biểu đồ
+                    showlegend=True,
+                    hovermode="x unified",
+                    yaxis=dict(title="BPM"),
+                    yaxis2=dict(title="%", overlaying="y", side="right"), # Trục SpO2
+                    yaxis3=dict(title="mmHg"), # Trục BP
+                    yaxis4=dict(title="rpm"),  # Trục Resp
+                    yaxis5=dict(title="°C")    # Trục Temp
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
                 # Plot vitals
                 fig = go.Figure()
                 
