@@ -109,35 +109,35 @@ cp .env.example .env
 
 ### Launch System 🎬
 
-# 1. Kích hoạt môi trường ảo (Nếu chưa)
+#### 1. Kích hoạt môi trường ảo (Nếu chưa)
 
 source venv/bin/activate
 
-# 2. Khởi động Hạ tầng (Docker Containers: Kafka, Postgres, InfluxDB...)
+#### 2. Khởi động Hạ tầng (Docker Containers: Kafka, Postgres, InfluxDB...)
 
-# Đợi khoảng 15-30s để các container khởi động hoàn toàn
+#### Đợi khoảng 15-30s để các container khởi động hoàn toàn
 
-# 3. Làm sạch & Khởi tạo dữ liệu nền (Làm 1 lần)
+#### 3. Làm sạch & Khởi tạo dữ liệu nền (Làm 1 lần)
 
-# Xóa dữ liệu cũ để tránh xung đột ID
+** Xóa dữ liệu cũ để tránh xung đột ID **
 
 python scripts/reset_database.py
 
-# 4. Nạp hồ sơ bệnh nhân (Metadata) bắt đầu streaming
+#### 4. Nạp hồ sơ bệnh nhân (Metadata) bắt đầu streaming
 
-# hoặc tùy chọn bệnh nhân theo hướng muốn streaming ở folder data
+** hoặc tùy chọn bệnh nhân theo hướng muốn streaming ở folder data **
 
 python scripts/run_vitaldb_replayer.py
 
-# 5. Chạy consumer để thu thập dữ liệu từ kafka
+#### 5. Chạy consumer để thu thập dữ liệu từ kafka
 
 python scripts/run_consumer.py
 
-# 6. Hiển thị giao diện
+#### 6. Hiển thị giao diện
 
 streamlit run src/dashboard/streamlit_app.py
 
-### Access Dashboard
+##### Access Dashboard
 
 Open browser: **http://localhost:8501**
 
